@@ -8,7 +8,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="data.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -2557,13 +2556,6 @@ function sendDailySummaryNow() {
   showToast('📧 Outlook opened — click Send');
 }
 
-// ---- Gist Persistence ----
-const GIST_ID = '8a640ad7fe31d7a2ac5637dd4de868f5';
-const GIST_FILE = 'activity-tracker-data.json';
-function getToken(){
-  return 'ghp_AlbkSmoLz7' + '5i3CO367Zhf' + '8gzF97DUk1wv8IJ';
-}
-
 function showSyncStatus(msg, isError){
   const el = document.getElementById('sync-status');
   if(!el) return;
@@ -2698,10 +2690,10 @@ async function loadFromGist(){
 // ---- Layer 0: data.js (bundled with repo) ----
 function loadFromDataJs(){
   try {
-    if(typeof TRACKER_DATA === 'undefined') return false;
+    if(typeof TRACKER_DATA === 'undefined' || TRACKER_DATA === null) return false;
     if(!TRACKER_DATA.data || !Array.isArray(TRACKER_DATA.data) || TRACKER_DATA.data.length === 0) return false;
     return applyPayload(TRACKER_DATA, 'data.js');
-  } catch(e){ console.warn('[Backup] data.js load failed:', e); return false; }
+  } catch(e){ return false; }
 }
 
 // ---- Generate and download data.js ----
