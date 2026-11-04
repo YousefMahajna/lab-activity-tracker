@@ -2266,8 +2266,21 @@ function doLogin(level) {
   currentUser = level;
   document.getElementById('login-screen').classList.remove('show');
   applyPermissionsToUI();
+  // Always render — data may already be loaded or will render when load completes
   render(currentFilter);
   updateSummary(currentFilter);
+  // If data is still loading (empty), wait and re-render once it arrives
+  if(data.length === 0){
+    const wait = setInterval(()=>{
+      if(data.length > 0){
+        clearInterval(wait);
+        render(currentFilter);
+        updateSummary(currentFilter);
+      }
+    }, 300);
+    // Stop waiting after 10s
+    setTimeout(()=>clearInterval(wait), 10000);
+  }
 }
 
 function doLogout() {
@@ -2779,29 +2792,47 @@ function saveAfter(fn){
 
 // ---- Init: load with fallback chain ----
 async function init(){
-  visibleDays = getWorkDays();
-  document.getElementById('week-label').textContent =
-    'Week of '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
-  buildHeader();
+  // 1. Build the page shell immediately
+  try {
+    visibleDays = getWorkDays();
+    document.getElementById('week-label').textContent =
+      'Week of '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+    buildHeader();
+  } catch(e){ console.error('[Init] Shell error:', e); }
 
-  // 4-layer load chain: Gist → localStorage → data.js → empty
-  const gistOk = await loadFromGist();
-  if(!gistOk){
-    const localOk = loadFromLocal();
-    if(localOk){
-      showSyncStatus('⚠️ Cloud unavailable — loaded from local backup', true);
-    } else {
-      const dataJsOk = loadFromDataJs();
-      if(dataJsOk){
-        showSyncStatus('⚠️ Loaded from data.js — cloud unavailable', true);
-      } else {
-        showSyncStatus('No saved data found');
+  // 2. Show login screen RIGHT AWAY — never block on data load
+  try {
+    document.getElementById('login-screen').classList.add('show');
+  } catch(e){ console.error('[Init] Login screen error:', e); }
+
+  // 3. Load data in background (after login screen is visible)
+  setTimeout(async () => {
+    try {
+      // Try Gist first
+      const gistOk = await loadFromGist().catch(()=>false);
+      if(!gistOk){
+        // Try localStorage
+        const localOk = loadFromLocal();
+        if(localOk){
+          showSyncStatus('⚠️ Cloud unavailable — loaded from local backup', true);
+        } else {
+          // Try data.js
+          const dataJsOk = loadFromDataJs();
+          if(dataJsOk){
+            showSyncStatus('⚠️ Loaded from data.js — cloud unavailable', true);
+          } else {
+            showSyncStatus('Ready — no saved data found');
+          }
+        }
       }
+      // Re-render if user already logged in
+      if(currentUser){ render(currentFilter); updateSummary(currentFilter); }
+    } catch(e){
+      console.error('[Init] Data load error:', e);
+      showSyncStatus('⚠️ Load error — try refreshing', true);
+      try { loadFromLocal(); } catch(e2){}
     }
-  }
-
-  // Show login screen
-  document.getElementById('login-screen').classList.add('show');
+  }, 100);
 }
 init();
 </script>
