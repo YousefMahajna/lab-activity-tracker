@@ -335,6 +335,7 @@ td.c-day { text-align:center; }
     <span class="header-title">Activity tracker</span>
     <span class="header-week" id="week-label"></span>
     <span id="sync-status" style="font-size:11px;color:var(--text-3);margin-left:4px;"></span>
+    <button onclick="silentRefresh()" title="Pull latest data now" style="font-size:11px;background:none;border:none;cursor:pointer;color:var(--text-3);padding:2px 4px;" id="refresh-btn">🔄</button>
     <span id="user-pill" class="user-pill user-guest" style="margin-left:8px;">Guest</span>
     <button id="backup-btn" onclick="openBackupModal()" style="display:none;" class="action-btn" title="Backup &amp; restore data" style="border-color:#166534;color:#166534;">
       <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1v8M4 6l3 3 3-3"/><path d="M2 10v2a1 1 0 001 1h8a1 1 0 001-1v-2"/></svg>
@@ -2273,6 +2274,7 @@ function doLogin(level) {
   currentUser = level;
   document.getElementById('login-screen').classList.remove('show');
   applyPermissionsToUI();
+  startAutoRefresh(); // begin polling for other users' changes
   // Always render — data may already be loaded or will render when load completes
   render(currentFilter);
   updateSummary(currentFilter);
@@ -2647,6 +2649,7 @@ async function saveToGist(){
       body: JSON.stringify({ files:{ [GIST_FILE]:{ content: JSON.stringify(payload,null,2) } } })
     });
     if(!res.ok) throw new Error('HTTP '+res.status);
+    _lastSavedAt = payload.savedAt; // mark so silentRefresh ignores this version
     showSyncStatus('Saved · '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}));
   } catch(err){
     // Gist failed but localStorage succeeded — data is NOT lost
@@ -2676,6 +2679,7 @@ async function loadFromGist(){
     if(!content) throw new Error('File not found in gist');
     const parsed = JSON.parse(content);
     if(applyPayload(parsed, 'Gist')){
+      _lastSavedAt = parsed.savedAt || null;
       showSyncStatus('Loaded · '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}));
       saveToLocal();
       return true;
@@ -2790,6 +2794,40 @@ function restoreFromSnapshot(idx){
     closeBackupModal();
     showToast('✅ Restored from snapshot · '+new Date(s.savedAt).toLocaleString('en-GB'));
   }
+}
+
+// ---- Auto-refresh: pull latest from Gist every 30s ----
+let _lastSavedAt = null;
+let _refreshInterval = null;
+
+async function silentRefresh(){
+  if(!currentUser) return; // only when logged in
+  try {
+    const res = await fetch('https://api.github.com/gists/'+GIST_ID, {
+      headers:{ 'Authorization':'token '+getToken() }
+    });
+    if(!res.ok) return;
+    const gist  = await res.json();
+    const content = gist.files[GIST_FILE]?.content;
+    if(!content) return;
+    const parsed = JSON.parse(content);
+    // Only apply if server has newer data than what we loaded
+    if(parsed.savedAt && parsed.savedAt !== _lastSavedAt){
+      _lastSavedAt = parsed.savedAt;
+      if(applyPayload(parsed,'auto-refresh')){
+        saveToLocal();
+        render(currentFilter);
+        updateSummary(currentFilter);
+        const t = new Date(parsed.savedAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+        showSyncStatus('Synced · '+t);
+      }
+    }
+  } catch(e){ /* silent — never interrupt the user */ }
+}
+
+function startAutoRefresh(){
+  if(_refreshInterval) clearInterval(_refreshInterval);
+  _refreshInterval = setInterval(silentRefresh, 30000); // every 30 seconds
 }
 
 // ---- Auto-save after any data mutation ----
