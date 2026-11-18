@@ -1,0 +1,3154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weekly Activity Tracker</title>
+<meta name="lab-tracker-protocol" content="gist-journal-v1">
+<script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#F7F7F5; --surface:#FFFFFF; --border:#E4E4E0; --border-md:#D0CFC9;
+  --text-1:#1A1A18; --text-2:#5A5A56; --text-3:#9A9A94;
+  --gary-bg:#E8F1FD; --gary-fg:#1A4A8A;
+  --amir-bg:#E6F4DA; --amir-fg:#235212;
+  --samer-bg:#EEEAFD; --samer-fg:#3A2A9A;
+  --michael-bg:#FDF0DC; --michael-fg:#6A3A08;
+  --haytam-bg:#FCE8F0; --haytam-fg:#7A1A40;
+  --done-bg:#EDFAF3; --done-border:#B0E8CC; --done-text:#166534;
+}
+body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text-1); font-size:14px; line-height:1.5; min-height:100vh; }
+
+header { background:var(--surface); border-bottom:1px solid var(--border); padding:14px 28px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; gap:12px; flex-wrap:wrap; }
+.header-left { display:flex; align-items:baseline; gap:10px; }
+.header-title { font-size:15px; font-weight:600; }
+.header-week  { font-size:12px; color:var(--text-3); }
+.header-right { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.filters { display:flex; gap:5px; flex-wrap:wrap; }
+.filter-btn { font-family:'Inter',sans-serif; font-size:12px; font-weight:500; padding:4px 13px; border-radius:20px; border:1px solid var(--border-md); background:transparent; color:var(--text-2); cursor:pointer; transition:background 0.12s,color 0.12s,border-color 0.12s; }
+.filter-btn:hover { background:#F0F0EC; }
+.filter-btn.active { background:var(--text-1); color:#fff; border-color:var(--text-1); }
+.filter-btn.f-gary.active    { background:var(--gary-bg);    color:var(--gary-fg);    border-color:var(--gary-fg); }
+.filter-btn.f-amir.active    { background:var(--amir-bg);    color:var(--amir-fg);    border-color:var(--amir-fg); }
+.filter-btn.f-samer.active   { background:var(--samer-bg);   color:var(--samer-fg);   border-color:var(--samer-fg); }
+.filter-btn.f-michael.active { background:var(--michael-bg); color:var(--michael-fg); border-color:var(--michael-fg); }
+.filter-btn.f-haytam.active  { background:var(--haytam-bg);  color:var(--haytam-fg);  border-color:var(--haytam-fg); }
+.filter-btn.f-archive.active { background:#F0F0EC; color:var(--text-1); border-color:var(--text-3); }
+.filter-btn.f-day { display:flex; align-items:center; gap:4px; }
+.filter-btn.f-day.active-day { background:#FFF7ED; color:#92400E; border-color:#F59E0B; }
+
+.action-btn { font-family:'Inter',sans-serif; font-size:12px; font-weight:500; padding:5px 14px; border-radius:7px; border:1px solid var(--border-md); background:var(--surface); color:var(--text-2); cursor:pointer; display:flex; align-items:center; gap:5px; transition:background 0.12s,border-color 0.12s; white-space:nowrap; }
+.action-btn:hover { background:#F0F0EC; border-color:var(--text-3); }
+.action-btn.primary { background:var(--text-1); color:#fff; border-color:var(--text-1); }
+.action-btn.primary:hover { opacity:0.85; }
+.action-btn.archive-btn { border-color:#9A9A94; color:var(--text-2); }
+.action-btn.archive-btn.showing { background:#F0F0EC; border-color:var(--text-1); color:var(--text-1); }
+.sep { width:1px; height:20px; background:var(--border-md); margin:0 2px; }
+
+.main { padding:20px 28px 48px; }
+.summary-bar { display:flex; gap:12px; margin-bottom:18px; flex-wrap:wrap; }
+.stat-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px 16px; min-width:100px; }
+.stat-label { font-size:11px; color:var(--text-3); font-weight:500; margin-bottom:3px; }
+.stat-value { font-size:20px; font-weight:600; color:var(--text-1); }
+
+/* archived banner */
+.archive-banner { display:none; background:#FFFBEA; border:1px solid #E8D87A; border-radius:8px; padding:10px 16px; margin-bottom:14px; font-size:13px; color:#7A6010; align-items:center; gap:10px; }
+.archive-banner.show { display:flex; }
+.archive-search { font-family:'Inter',sans-serif; font-size:12px; padding:5px 10px; border:1px solid var(--border-md); border-radius:6px; background:var(--surface); color:var(--text-1); outline:none; width:200px; }
+
+.table-wrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; min-width:1200px; }
+thead th { font-size:11px; font-weight:600; color:var(--text-3); text-transform:uppercase; letter-spacing:0.04em; padding:9px 12px; background:#FAFAF8; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap; }
+thead th.day { text-align:center; width:48px; line-height:1.3; }
+thead th.c-p  { width:34px; }
+thead th.c-act { min-width:170px; }
+thead th.c-own { width:88px; }
+thead th.c-req { width:100px; }
+thead th.c-sta { min-width:260px; }
+thead th.c-edit { width:48px; text-align:center; }
+
+.group-row td { background:#FAFAF8; font-size:11px; font-weight:600; color:var(--text-3); text-transform:uppercase; letter-spacing:0.06em; padding:5px 12px; border-bottom:1px solid var(--border); border-top:1px solid var(--border); }
+.group-row:first-child td { border-top:none; }
+
+tbody tr.data-row { border-bottom:1px solid var(--border); transition:background 0.1s; }
+tbody tr.data-row:last-child { border-bottom:none; }
+tbody tr.data-row:hover { background:#FAFAF8; }
+tbody tr.vacation-row td { opacity:0.45; font-style:italic; }
+
+/* completed row */
+tbody tr.done-row { background:var(--done-bg); }
+tbody tr.done-row:hover { background:#E4F8EC; }
+tbody tr.done-row td { border-bottom:1px solid var(--done-border); }
+.done-badge { display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:600; color:var(--done-text); background:#D1FAE5; border-radius:12px; padding:2px 8px; margin-top:3px; }
+.done-badge svg { flex-shrink:0; }
+
+td { padding:9px 12px; vertical-align:top; }
+td.c-p { color:var(--text-3); font-size:12px; font-weight:500; text-align:center; }
+.act-title { font-weight:500; font-size:13px; color:var(--text-1); line-height:1.35; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.act-sub   { font-size:11px; color:var(--text-2); margin-top:2px; }
+.act-done .act-title { text-decoration:line-through; color:var(--text-3); }
+
+/* Priority badges */
+.pri-badge { display:inline-block; font-size:10px; font-weight:700; padding:2px 7px; border-radius:5px; white-space:nowrap; letter-spacing:0.02em; flex-shrink:0; }
+.pri-P1   { background:#FEE2E2; color:#991B1B; border:1px solid #FCA5A5; }
+.pri-High { background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; }
+.pri-Mid  { background:#DBEAFE; color:#1E40AF; border:1px solid #93C5FD; }
+.pri-Low  { background:#F0FDF4; color:#166534; border:1px solid #86EFAC; }
+
+/* Priority selector in modal */
+.pri-grid { display:flex; gap:8px; margin-top:4px; }
+.pri-btn {
+  font-family:'Inter',sans-serif; font-size:12px; font-weight:600;
+  padding:5px 16px; border-radius:7px; cursor:pointer;
+  transition:opacity 0.1s, transform 0.1s;
+  letter-spacing:0.02em;
+}
+.pri-btn:not(.sel) { opacity:0.38; }
+.pri-btn.sel { opacity:1; transform:scale(1.04); box-shadow:0 0 0 2px rgba(0,0,0,0.12); }
+.pri-btn-P1   { background:#FEE2E2; color:#991B1B; border:1px solid #FCA5A5; }
+.pri-btn-High { background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; }
+.pri-btn-Mid  { background:#DBEAFE; color:#1E40AF; border:1px solid #93C5FD; }
+.pri-btn-Low  { background:#F0FDF4; color:#166534; border:1px solid #86EFAC; }
+.pri-btn-none { background:var(--bg); color:var(--text-3); border:1px solid var(--border-md); font-weight:500; }
+
+.owner-badge { display:inline-block; font-size:11px; font-weight:600; padding:2px 9px; border-radius:20px; white-space:nowrap; }
+.owner-         { background:#F0F0EC; color:var(--text-3); border:1px dashed var(--border-md); }
+.owner-Unassigned { background:#F0F0EC; color:var(--text-3); border:1px dashed var(--border-md); }
+.owner-Gary    { background:var(--gary-bg);    color:var(--gary-fg); }
+.owner-Amir    { background:var(--amir-bg);    color:var(--amir-fg); }
+.owner-Samer   { background:var(--samer-bg);   color:var(--samer-fg); }
+.owner-Michael { background:var(--michael-bg); color:var(--michael-fg); }
+.owner-Haytam  { background:var(--haytam-bg);  color:var(--haytam-fg); }
+
+td.c-req { font-size:12px; color:var(--text-2); }
+td.c-day { text-align:center; }
+
+/* Status column */
+.status-list { list-style:none; }
+.status-entry { display:flex; gap:6px; padding:4px 0; border-bottom:1px solid var(--border); align-items:flex-start; }
+.status-entry:last-child { border-bottom:none; }
+.s-date { font-size:10px; font-weight:600; color:var(--text-3); white-space:nowrap; min-width:46px; padding-top:1px; }
+.s-dot { width:6px; height:6px; border-radius:50%; background:var(--border-md); flex-shrink:0; margin-top:5px; }
+.s-dot.latest { background:#3A8AE0; }
+.s-lines { display:flex; flex-direction:column; gap:1px; flex:1; min-width:0; }
+.s-actions { display:flex; gap:2px; opacity:0; transition:opacity 0.1s; flex-shrink:0; padding-top:1px; }
+.status-entry:hover .s-actions { opacity:1; }
+.s-btn { background:none; border:none; cursor:pointer; padding:2px 4px; border-radius:4px; color:var(--text-3); font-size:11px; line-height:1; }
+.s-btn:hover { background:#F0F0EC; color:var(--text-1); }
+.s-btn.del:hover { background:#FFF0F0; color:#C03030; }
+
+/* Inline status edit */
+.s-edit-form { display:none; flex-direction:column; gap:4px; margin-top:3px; }
+.s-edit-form.open { display:flex; }
+.s-edit-row { display:flex; gap:4px; }
+.s-edit-save { font-family:'Inter',sans-serif; font-size:11px; font-weight:500; padding:3px 10px; background:var(--text-1); color:#fff; border:none; border-radius:5px; cursor:pointer; }
+.s-edit-cancel { font-family:'Inter',sans-serif; font-size:11px; padding:3px 8px; background:none; color:var(--text-2); border:1px solid var(--border-md); border-radius:5px; cursor:pointer; }
+
+.add-update-btn { display:flex; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:11px; color:var(--text-3); background:none; border:1px dashed var(--border-md); border-radius:6px; padding:3px 9px; cursor:pointer; margin-top:5px; transition:color 0.1s,background 0.1s; }
+.add-update-btn:hover { color:var(--text-1); background:#F0F0EC; }
+.add-form { margin-top:5px; display:none; flex-direction:column; gap:5px; }
+.add-form.open { display:flex; }
+.add-form textarea { font-family:'Inter',sans-serif; font-size:12px; color:var(--text-1); background:var(--bg); border:1px solid var(--border-md); border-radius:6px; padding:6px 9px; resize:none; height:auto; min-height:34px; outline:none; line-height:1.5; overflow:hidden; }
+.add-form textarea:focus { border-color:#3A8AE0; }
+.add-form .hint { font-size:10px; color:var(--text-3); }
+/* Multi-line status display */
+.s-lines { display:flex; flex-direction:column; gap:1px; flex:1; }
+.s-line  { font-size:12px; color:var(--text-2); line-height:1.4; display:flex; align-items:baseline; gap:5px; }
+.s-line::before { content:'·'; color:var(--border-md); flex-shrink:0; }
+/* Inline status edit textarea */
+.s-edit-input { font-family:'Inter',sans-serif; font-size:12px; color:var(--text-1); background:var(--bg); border:1px solid #3A8AE0; border-radius:5px; padding:4px 8px; outline:none; width:100%; resize:none; min-height:34px; line-height:1.5; overflow:hidden; }
+.form-row { display:flex; gap:5px; align-items:center; }
+.mark-done-check { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-2); cursor:pointer; margin-left:auto; }
+.mark-done-check input { cursor:pointer; }
+.btn-save { font-family:'Inter',sans-serif; font-size:12px; font-weight:500; padding:4px 13px; background:var(--text-1); color:#fff; border:none; border-radius:6px; cursor:pointer; }
+.btn-save:hover { opacity:0.85; }
+.btn-cancel { font-family:'Inter',sans-serif; font-size:12px; padding:4px 11px; background:none; color:var(--text-2); border:1px solid var(--border-md); border-radius:6px; cursor:pointer; }
+
+.edit-row-btn { background:none; border:none; cursor:pointer; padding:4px 6px; color:var(--text-3); border-radius:5px; transition:background 0.1s,color 0.1s; }
+.edit-row-btn:hover { background:#F0F0EC; color:var(--text-1); }
+
+/* Modal */
+.modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:200; align-items:center; justify-content:center; }
+.modal-bg.open { display:flex; }
+.modal { background:var(--surface); border-radius:12px; border:1px solid var(--border); padding:24px 28px; width:580px; max-width:95vw; max-height:90vh; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,0.12); }
+.modal-title { font-size:15px; font-weight:600; margin-bottom:20px; color:var(--text-1); }
+.field-group { margin-bottom:14px; }
+.field-label { font-size:11px; font-weight:600; color:var(--text-3); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:5px; }
+.field-input { font-family:'Inter',sans-serif; font-size:13px; color:var(--text-1); background:var(--bg); border:1px solid var(--border-md); border-radius:7px; padding:7px 11px; width:100%; outline:none; }
+.field-input:focus { border-color:#3A8AE0; }
+#f-sub0,#f-sub1,#f-sub2,#f-sub3,#f-sub4 { font-size:12px; padding:5px 10px; }
+.field-select { font-family:'Inter',sans-serif; font-size:13px; color:var(--text-1); background:var(--bg); border:1px solid var(--border-md); border-radius:7px; padding:7px 11px; width:100%; outline:none; cursor:pointer; }
+.days-grid { display:flex; gap:8px; flex-wrap:wrap; margin-top:4px; }
+.day-toggle { font-family:'Inter',sans-serif; font-size:12px; font-weight:500; padding:5px 13px; border-radius:20px; border:1px solid var(--border-md); background:var(--surface); color:var(--text-2); cursor:pointer; transition:background 0.1s,color 0.1s,border-color 0.1s; }
+.day-toggle.on { background:var(--text-1); color:#fff; border-color:var(--text-1); }
+.modal-done-toggle { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-2); cursor:pointer; padding:10px 0; border-top:1px solid var(--border); margin-top:4px; }
+.modal-done-toggle input { cursor:pointer; width:15px; height:15px; }
+.modal-footer { display:flex; justify-content:space-between; align-items:center; margin-top:20px; padding-top:16px; border-top:1px solid var(--border); }
+.modal-footer-right { display:flex; gap:8px; }
+.btn-delete { font-family:'Inter',sans-serif; font-size:12px; padding:6px 14px; background:none; color:#C03030; border:1px solid #EABABA; border-radius:7px; cursor:pointer; }
+.btn-delete:hover { background:#FFF0F0; }
+
+/* ---- Analytics ---- */
+.analytics-overlay { display:none; position:fixed; inset:0; background:var(--bg); z-index:400; overflow-y:auto; }
+.analytics-overlay.open { display:block; }
+.analytics-header { background:var(--surface); border-bottom:1px solid var(--border); padding:16px 32px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:10; }
+.analytics-title { font-size:16px; font-weight:600; display:flex; align-items:center; gap:8px; }
+.analytics-body { padding:28px 32px 60px; max-width:1200px; margin:0 auto; }
+.an-tabs { display:flex; gap:4px; margin-bottom:24px; border-bottom:1px solid var(--border); }
+.an-tab { font-family:'Inter',sans-serif; font-size:13px; font-weight:500; padding:8px 18px; border:none; background:none; color:var(--text-2); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; transition:color 0.1s,border-color 0.1s; }
+.an-tab.active { color:var(--text-1); border-bottom-color:var(--text-1); }
+.an-tab-panel { display:none; } .an-tab-panel.active { display:block; }
+.an-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; margin-bottom:28px; }
+.an-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px 18px; }
+.an-card-label { font-size:11px; font-weight:600; color:var(--text-3); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; }
+.an-card-value { font-size:26px; font-weight:700; color:var(--text-1); }
+.an-card-sub   { font-size:11px; color:var(--text-3); margin-top:2px; }
+.an-section { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px 22px; margin-bottom:20px; }
+.an-section-title { font-size:13px; font-weight:600; color:var(--text-1); margin-bottom:16px; display:flex; align-items:center; gap:7px; }
+.an-table { width:100%; border-collapse:collapse; font-size:13px; }
+.an-table th { font-size:11px; font-weight:600; color:var(--text-3); text-transform:uppercase; letter-spacing:0.04em; padding:6px 10px; text-align:left; border-bottom:1px solid var(--border); }
+.an-table td { padding:9px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+.an-table tr:last-child td { border-bottom:none; }
+.an-table tr:hover td { background:#FAFAF8; }
+.an-bar-wrap { width:100%; background:#F0F0EC; border-radius:4px; height:8px; overflow:hidden; }
+.an-bar { height:8px; border-radius:4px; transition:width 0.4s; }
+.an-owner-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:6px; flex-shrink:0; }
+.an-pri-pill { font-size:10px; font-weight:700; padding:2px 7px; border-radius:5px; }
+.an-period-btns { display:flex; gap:4px; margin-bottom:16px; }
+.an-period-btn { font-family:'Inter',sans-serif; font-size:11px; font-weight:500; padding:4px 12px; border-radius:20px; border:1px solid var(--border-md); background:transparent; color:var(--text-2); cursor:pointer; }
+.an-period-btn.active { background:var(--text-1); color:#fff; border-color:var(--text-1); }
+.an-empty { text-align:center; padding:32px; color:var(--text-3); font-size:13px; }
+.an-two-col { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+@media(max-width:700px){ .an-two-col{ grid-template-columns:1fr; } }
+/* Login screen */
+.login-screen { display:none; position:fixed; inset:0; background:var(--bg); z-index:500; align-items:center; justify-content:center; flex-direction:column; gap:24px; }
+.login-screen.show { display:flex; }
+.login-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:36px 40px; width:380px; max-width:95vw; box-shadow:0 8px 32px rgba(0,0,0,0.08); }
+.login-logo { font-size:17px; font-weight:700; color:var(--text-1); margin-bottom:6px; }
+.login-sub  { font-size:13px; color:var(--text-3); margin-bottom:28px; }
+.login-level-grid { display:flex; flex-direction:column; gap:10px; }
+.login-level-btn { font-family:'Inter',sans-serif; font-size:14px; font-weight:500; padding:12px 18px; border-radius:9px; border:1px solid var(--border-md); background:var(--bg); color:var(--text-1); cursor:pointer; text-align:left; display:flex; align-items:center; justify-content:space-between; transition:border-color 0.1s,background 0.1s; }
+.login-level-btn:hover { border-color:var(--border-md); background:#F0F0EC; }
+.login-level-btn .lbl { font-size:11px; color:var(--text-3); font-weight:400; }
+.login-pw-form { display:none; flex-direction:column; gap:10px; margin-top:4px; }
+.login-pw-form.show { display:flex; }
+.login-pw-input { font-family:'Inter',sans-serif; font-size:14px; color:var(--text-1); background:var(--bg); border:1px solid var(--border-md); border-radius:8px; padding:10px 14px; width:100%; outline:none; }
+.login-pw-input:focus { border-color:#3A8AE0; }
+.login-err { font-size:12px; color:#C03030; display:none; }
+.login-err.show { display:block; }
+.user-pill { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; padding:3px 10px; border-radius:20px; }
+.user-guest  { background:#F0F0EC; color:var(--text-2); border:1px solid var(--border-md); }
+.user-lab    { background:#DBEAFE; color:#1E40AF; border:1px solid #93C5FD; }
+.user-admin  { background:#FEE2E2; color:#991B1B; border:1px solid #FCA5A5; }
+/* Settings modal */
+.settings-row { display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); font-size:13px; }
+.settings-row:last-child { border-bottom:none; }
+.settings-pw-input { font-family:'Inter',sans-serif; font-size:12px; padding:4px 8px; border:1px solid var(--border-md); border-radius:6px; background:var(--bg); color:var(--text-1); outline:none; width:160px; }
+.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(16px); background:var(--text-1); color:#fff; font-size:13px; padding:9px 18px; border-radius:8px; opacity:0; transition:opacity 0.2s,transform 0.2s; pointer-events:none; z-index:300; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+#import-input { display:none; }
+/* Share card preview */
+#share-preview canvas { display:block; width:100%; border-radius:6px; }
+.search-input { font-family:'Inter',sans-serif; font-size:12px; color:var(--text-1); background:var(--surface); border:1px solid var(--border-md); border-radius:7px; padding:5px 10px; outline:none; width:170px; transition:border-color 0.15s; }
+.search-input:focus { border-color:#3A8AE0; }
+.search-input.active { border-color:#3A8AE0; background:#F0F6FF; }
+</style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div class="login-screen" id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">🔬 Process Lab</div>
+    <div class="login-sub">Activity Tracker · NVIDIA</div>
+    <div id="login-step1" class="login-level-grid">
+      <button class="login-level-btn" onclick="selectLevel('guest')">
+        <span>Enter as Guest</span><span class="lbl">View &amp; add tasks only</span>
+      </button>
+      <button class="login-level-btn" onclick="selectLevel('lab')">
+        <span>Lab Practical Engineer</span><span class="lbl">Password required</span>
+      </button>
+      <button class="login-level-btn" onclick="selectLevel('admin')">
+        <span>Process Lab Manager</span><span class="lbl">Password required</span>
+      </button>
+    </div>
+    <div class="login-pw-form" id="login-pw-form">
+      <input class="login-pw-input" id="login-pw-input" type="password" placeholder="Enter password…" onkeydown="if(event.key==='Enter')submitLogin()">
+      <div class="login-err" id="login-err">Incorrect password. Try again.</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-cancel" onclick="backToLevels()">Back</button>
+        <button class="btn-save" style="flex:1" onclick="submitLogin()">Enter</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal (admin only) -->
+<div class="modal-bg" id="settings-modal-bg" onclick="if(event.target===this)closeSettings()">
+  <div class="modal" style="width:480px;">
+    <div class="modal-title">⚙️ Settings</div>
+
+    <div class="field-group">
+      <div class="field-label">User levels &amp; passwords</div>
+      <div class="settings-row">
+        <span>Guest <span style="font-size:11px;color:var(--text-3)">(no password)</span></span>
+        <span style="color:var(--text-3);font-size:12px;">View &amp; add tasks</span>
+      </div>
+      <div class="settings-row">
+        <span>Lab Practical Engineer</span>
+        <input class="settings-pw-input" id="pw-lab" type="text" placeholder="password">
+      </div>
+      <div class="settings-row">
+        <span>Process Lab Manager</span>
+        <input class="settings-pw-input" id="pw-admin" type="text" placeholder="password">
+      </div>
+    </div>
+
+
+
+    <div class="field-group" style="margin-top:18px;">
+      <div class="field-label">Email recipients</div>
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:6px;">Daily summary will be sent to all these addresses</div>
+      <div id="recipients-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;"></div>
+      <div style="display:flex;gap:6px;">
+        <input class="field-input" id="new-recipient-input" placeholder="email@nvidia.com" style="font-size:12px;padding:5px 10px;"
+          onkeydown="if(event.key==='Enter')addRecipient()">
+        <button class="btn-save" onclick="addRecipient()" style="white-space:nowrap;padding:5px 14px;">+ Add</button>
+      </div>
+    </div>
+
+
+
+    <div class="modal-footer">
+      <div></div>
+      <div class="modal-footer-right">
+        <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
+        <button class="btn-save" onclick="saveSettings()">Save settings</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<header>
+  <div class="header-left">
+    <span class="header-title">Activity tracker</span>
+    <span class="header-week" id="week-label"></span>
+    <span id="sync-status" style="font-size:11px;color:var(--text-3);margin-left:4px;"></span>
+    <button onclick="silentRefresh()" title="Pull latest data now" style="font-size:11px;background:none;border:none;cursor:pointer;color:var(--text-3);padding:2px 4px;" id="refresh-btn">🔄</button>
+    <span id="user-pill" class="user-pill user-guest" style="margin-left:8px;">Guest</span>
+    <button id="backup-btn" onclick="openBackupModal()" style="display:none;" class="action-btn" title="Server backup, pending work and recovery" style="border-color:#166534;color:#166534;">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1v8M4 6l3 3 3-3"/><path d="M2 10v2a1 1 0 001 1h8a1 1 0 001-1v-2"/></svg>
+      Backup
+    </button>
+    <button id="analytics-btn" onclick="openAnalytics()" style="display:none;" class="action-btn" title="Analytics dashboard">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="8" width="3" height="5" rx="1"/><rect x="5.5" y="5" width="3" height="8" rx="1"/><rect x="10" y="2" width="3" height="11" rx="1"/></svg>
+      Analytics
+    </button>
+    <button id="send-now-btn" onclick="sendDailySummaryNow()" style="display:none;" class="action-btn" title="Send daily summary email now">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="13" y2="7"/><line x1="1" y1="13" x2="13" y2="7"/><line x1="1" y1="1" x2="1" y2="13"/></svg>
+      Send report
+    </button>
+    <button id="settings-btn" onclick="openSettings()" style="display:none;" class="action-btn" title="Settings">⚙️</button>
+    <button onclick="doLogout()" class="btn-cancel" style="font-size:11px;padding:3px 9px;margin-left:2px;">Sign out</button>
+  </div>
+  <div class="header-right">
+    <div class="filters">
+      <button class="filter-btn active"   onclick="setFilter('all',this)">All</button>
+      <button class="filter-btn f-gary"    onclick="setFilter('Gary',this)">Gary</button>
+      <button class="filter-btn f-amir"    onclick="setFilter('Amir',this)">Amir</button>
+      <button class="filter-btn f-samer"   onclick="setFilter('Samer',this)">Samer</button>
+      <button class="filter-btn f-michael" onclick="setFilter('Michael',this)">Michael</button>
+      <button class="filter-btn f-haytam"  onclick="setFilter('Haytam',this)">Haytam</button>
+    </div>
+    <div class="sep"></div>
+    <div class="filters">
+      <button class="filter-btn f-day active-day" id="btn-day-all"      onclick="setDayFilter('all',this)">All days</button>
+      <button class="filter-btn f-day"             id="btn-day-today"    onclick="setDayFilter('today',this)">
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="1" y="2" width="10" height="9" rx="1"/><line x1="8" y1="1" x2="8" y2="3"/><line x1="4" y1="1" x2="4" y2="3"/><line x1="1" y1="5" x2="11" y2="5"/></svg>
+        Today
+      </button>
+      <button class="filter-btn f-day"             id="btn-day-tomorrow" onclick="setDayFilter('tomorrow',this)">Tomorrow</button>
+    </div>
+    <div class="sep"></div>
+    <button class="action-btn" onclick="openShareModal('today')" style="border-color:#7060E0;color:#3A2A9A;">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="3" r="1.5"/><circle cx="11" cy="11" r="1.5"/><circle cx="3" cy="7" r="1.5"/><line x1="4.4" y1="7.7" x2="9.6" y2="10.3"/><line x1="4.4" y1="6.3" x2="9.6" y2="3.7"/></svg>
+      Share Today
+    </button>
+    <button class="action-btn" onclick="openShareModal('tomorrow')" style="border-color:#7060E0;color:#3A2A9A;">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="3" r="1.5"/><circle cx="11" cy="11" r="1.5"/><circle cx="3" cy="7" r="1.5"/><line x1="4.4" y1="7.7" x2="9.6" y2="10.3"/><line x1="4.4" y1="6.3" x2="9.6" y2="3.7"/></svg>
+      Share Tomorrow
+    </button>
+    <div class="sep"></div>
+    <button class="action-btn" id="hide-done-btn" onclick="toggleHideDone()" style="border-color:#B0E8CC;color:#166534;">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 7s2-4 6-4 6 4 6 4-2 4-6 4-6-4-6-4z"/><circle cx="7" cy="7" r="1.5"/><line x1="2" y1="2" x2="12" y2="12"/></svg>
+      Hide completed
+    </button>
+    <button class="action-btn archive-btn" id="archive-toggle-btn" onclick="toggleArchive()">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="12" height="9" rx="1"/><path d="M1 6h12M5 9h4"/></svg>
+      Show archive
+    </button>
+    <div class="sep"></div>
+    <button class="action-btn" onclick="document.getElementById('import-input').click()">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v2h10v-2M7 2v7M4 6l3 3 3-3"/></svg>
+      Import Excel
+    </button>
+    <button class="action-btn primary" onclick="exportExcel()">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v2h10v-2M7 9V2M4 5l3-3 3 3"/></svg>
+      Export Excel
+    </button>
+    <button class="action-btn" id="add-row-btn" onclick="addNewRow()" style="border-color:#3A8AE0;color:#1A4A8A;">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="7" y1="2" x2="7" y2="12"/><line x1="2" y1="7" x2="12" y2="7"/></svg>
+      Add row
+    </button>
+    <input type="file" id="import-input"   accept=".xlsx,.xls" onchange="importExcel(event)">
+<input type="file" id="restore-file-input" accept=".json" onchange="restoreFromFile(event)" style="display:none">
+  </div>
+</header>
+
+<div class="main">
+  <div class="summary-bar" id="summary-bar"></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+    <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-3);">
+      <span style="width:8px;height:8px;border-radius:50%;background:#F59E0B;display:inline-block;flex-shrink:0;"></span>
+      Rolled over — task was planned for a past day and not yet completed
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <div style="position:relative;display:flex;align-items:center;">
+        <svg style="position:absolute;left:8px;color:var(--text-3);pointer-events:none" width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="6" r="4"/><line x1="9.5" y1="9.5" x2="13" y2="13"/></svg>
+        <input id="search-activity" class="search-input" placeholder="Search activity…" oninput="render(currentFilter)" style="padding-left:28px;">
+      </div>
+      <div style="position:relative;display:flex;align-items:center;">
+        <svg style="position:absolute;left:8px;color:var(--text-3);pointer-events:none" width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="6" r="4"/><line x1="9.5" y1="9.5" x2="13" y2="13"/></svg>
+        <input id="search-requester" class="search-input" placeholder="Search requester…" oninput="render(currentFilter)" style="padding-left:28px;">
+      </div>
+      <button class="btn-cancel" id="clear-search-btn" onclick="clearSearch()" style="display:none;font-size:11px;padding:4px 10px;">✕ Clear</button>
+    </div>
+  </div>
+
+  <div class="archive-banner" id="archive-banner">
+    <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="1" y="3" width="12" height="9" rx="1"/><path d="M1 6h12M5 9h4"/></svg>
+    Showing completed tasks hidden more than 3 days ago &nbsp;·&nbsp;
+    <input class="archive-search" id="archive-search" placeholder="Search activity..." oninput="render(currentFilter)">
+    <button class="btn-cancel" style="margin-left:auto" onclick="toggleArchive()">Hide completed</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead id="thead-rows"></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-bg" id="modal-bg" onclick="closeModalBg(event)">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Edit row</div>
+    <div class="field-group">
+      <div class="field-label" id="modal-pri-label">Priority</div>
+      <div class="pri-grid">
+        <button type="button" class="pri-btn pri-btn-P1"   data-pri="P1"   onclick="selectPri(this)">P1</button>
+        <button type="button" class="pri-btn pri-btn-High" data-pri="High" onclick="selectPri(this)">High</button>
+        <button type="button" class="pri-btn pri-btn-Mid"  data-pri="Mid"  onclick="selectPri(this)">Mid</button>
+        <button type="button" class="pri-btn pri-btn-Low"  data-pri="Low"  onclick="selectPri(this)">Low</button>
+        <button type="button" class="pri-btn pri-btn-none sel" data-pri=""  onclick="selectPri(this)">None</button>
+      </div>
+    </div>
+    <div class="field-group">
+      <div class="field-label">Activity title</div>
+      <input class="field-input" id="f-title" placeholder="Activity name">
+    </div>
+    <div class="field-group">
+      <div class="field-label">Details <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-3);font-size:10px">up to 5 lines</span></div>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <input class="field-input" id="f-sub0" placeholder="Detail line 1">
+        <input class="field-input" id="f-sub1" placeholder="Detail line 2">
+        <input class="field-input" id="f-sub2" placeholder="Detail line 3">
+        <input class="field-input" id="f-sub3" placeholder="Detail line 4">
+        <input class="field-input" id="f-sub4" placeholder="Detail line 5">
+      </div>
+    </div>
+    <div class="field-group" id="modal-owner-group">
+      <div class="field-label">Owner</div>
+      <select class="field-select" id="f-owner">
+        <option value="">— Unassigned —</option>
+        <option>Gary</option><option>Amir</option><option>Samer</option><option>Michael</option><option>Haytam</option>
+      </select>
+    </div>
+    <div class="field-group">
+      <div class="field-label">Requester</div>
+      <input class="field-input" id="f-req" placeholder="Name(s)">
+    </div>
+    <div class="field-group" id="modal-days-group">
+      <div class="field-label">Scheduled days</div>
+      <div class="days-grid" id="modal-days-grid"></div>
+    </div>
+    <div class="field-group" id="modal-status-group">
+      <div class="field-label">Add status note</div>
+      <input class="field-input" id="f-status" placeholder="Optional — dated today">
+    </div>
+    <label class="modal-done-toggle" id="modal-done-group">
+      <input type="checkbox" id="f-done">
+      Mark as completed
+    </label>
+    <div class="modal-footer">
+      <button class="btn-delete" id="btn-delete" onclick="deleteRow()">Delete row</button>
+      <div class="modal-footer-right">
+        <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <button class="btn-save" onclick="saveModal()">Save changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Analytics Overlay -->
+<div class="analytics-overlay" id="analytics-overlay">
+  <div class="analytics-header">
+    <div class="analytics-title">
+      <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="8" width="3" height="5" rx="1"/><rect x="5.5" y="5" width="3" height="8" rx="1"/><rect x="10" y="2" width="3" height="11" rx="1"/></svg>
+      Analytics Dashboard
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <span style="font-size:12px;color:var(--text-3);" id="an-data-note"></span>
+      <button class="action-btn" onclick="closeAnalytics()">✕ Close</button>
+    </div>
+  </div>
+  <div class="analytics-body">
+    <!-- Tabs -->
+    <div class="an-tabs">
+      <button class="an-tab active" onclick="anTab('overview',this)">📊 Overview</button>
+      <button class="an-tab" onclick="anTab('engineers',this)">👤 Per Engineer</button>
+      <button class="an-tab" onclick="anTab('compare',this)">⚖️ Comparison</button>
+      <button class="an-tab" onclick="anTab('timeline',this)">📅 Timeline</button>
+      <button class="an-tab" onclick="anTab('nextweek',this)">🔭 Next Week</button>
+    </div>
+
+    <!-- Overview -->
+    <div class="an-tab-panel active" id="an-panel-overview">
+      <div class="an-grid" id="an-overview-stats"></div>
+      <div class="an-two-col">
+        <div class="an-section">
+          <div class="an-section-title">📌 Tasks by priority</div>
+          <table class="an-table" id="an-by-priority"></table>
+        </div>
+        <div class="an-section">
+          <div class="an-section-title">📁 Tasks by product / BU</div>
+          <table class="an-table" id="an-by-product"></table>
+        </div>
+      </div>
+      <div class="an-section">
+        <div class="an-section-title">🏃 Completion rate per engineer</div>
+        <table class="an-table" id="an-completion-rate"></table>
+      </div>
+      <div class="an-section">
+        <div class="an-section-title">⏱️ Average time to complete (days from creation to completion)</div>
+        <table class="an-table" id="an-avg-time"></table>
+      </div>
+    </div>
+
+    <!-- Per Engineer -->
+    <div class="an-tab-panel" id="an-panel-engineers">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;" id="an-eng-pills"></div>
+      <div id="an-eng-detail"></div>
+    </div>
+
+    <!-- Comparison -->
+    <div class="an-tab-panel" id="an-panel-compare">
+      <div class="an-section">
+        <div class="an-section-title">⚖️ Side-by-side engineer comparison</div>
+        <table class="an-table" id="an-compare-table"></table>
+      </div>
+      <div class="an-two-col">
+        <div class="an-section">
+          <div class="an-section-title">🏷️ Priority distribution</div>
+          <table class="an-table" id="an-pri-dist"></table>
+        </div>
+        <div class="an-section">
+          <div class="an-section-title">📦 Product mix</div>
+          <table class="an-table" id="an-product-mix"></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="an-tab-panel" id="an-panel-timeline">
+      <div class="an-period-btns">
+        <button class="an-period-btn active" onclick="anPeriod('week',this)">This week</button>
+        <button class="an-period-btn" onclick="anPeriod('month',this)">This month</button>
+        <button class="an-period-btn" onclick="anPeriod('all',this)">All time</button>
+      </div>
+      <div class="an-section">
+        <div class="an-section-title">📅 Activity by scheduled day</div>
+        <table class="an-table" id="an-timeline-table"></table>
+      </div>
+      <div class="an-section">
+        <div class="an-section-title">✅ Completed over time</div>
+        <table class="an-table" id="an-completed-time"></table>
+      </div>
+    </div>
+
+    <!-- Next Week -->
+    <div class="an-tab-panel" id="an-panel-nextweek">
+      <div class="an-grid" id="an-nextweek-stats"></div>
+      <div class="an-section">
+        <div class="an-section-title">🔭 Planned for next week — per engineer</div>
+        <div id="an-nextweek-detail"></div>
+      </div>
+      <div class="an-section">
+        <div class="an-section-title">💡 Suggestions &amp; insights</div>
+        <div id="an-insights" style="font-size:13px;line-height:1.7;color:var(--text-2);"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Share Modal -->
+<div class="modal-bg" id="share-modal-bg" onclick="closeShareModalBg(event)">
+  <div class="modal" style="width:480px;max-width:96vw;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div class="modal-title" id="share-modal-title" style="margin-bottom:0">Share</div>
+      <button class="btn-cancel" onclick="closeShareModal()">✕</button>
+    </div>
+    <div id="share-preview" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#fff;"></div>
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
+      <button class="btn-cancel" onclick="closeShareModal()">Close</button>
+      <button class="btn-save" onclick="downloadShareImage()">⬇ Download image</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Show login screen IMMEDIATELY — before any other JS runs
+// This guarantees the page never appears blank even if everything else fails
+document.addEventListener('DOMContentLoaded', function(){
+  try { document.getElementById('login-screen').classList.add('show'); } catch(e){}
+});
+// Also try right now in case DOM is already ready
+try { document.getElementById('login-screen').classList.add('show'); } catch(e){}
+
+const OWNERS = ['Gary','Amir','Samer','Michael','Haytam'];
+const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const WORK_JS_DAYS = new Set([0,1,2,3,4]); // Sun=0..Thu=4
+
+
+let currentFilter = 'all';
+let dayFilter = 'all';
+let editingId = null;
+let visibleDays = [];
+let showArchive = false;
+let hideDone = false;
+
+// ---- Compute 6 rolling work days ----
+function getWorkDays() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dow = today.getDay(); // 0=Sun,1=Mon,...,6=Sat
+
+  // Find this week's Sunday (start of work week Sun–Thu)
+  // If today is Fri(5) or Sat(6), jump to NEXT Sunday
+  let sunday = new Date(today);
+  if (dow === 0) {
+    // today IS Sunday — use today
+  } else if (dow >= 1 && dow <= 4) {
+    // Mon–Thu: go back to this week's Sunday
+    sunday.setDate(sunday.getDate() - dow);
+  } else {
+    // Fri(5) or Sat(6): go forward to next Sunday
+    sunday.setDate(sunday.getDate() + (7 - dow));
+  }
+
+  // Collect 5 work days (Sun–Thu) for this week
+  // then 6 work days (Sun–Thu + next Sun) for span
+  // Actually: show this week Sun–Thu (5) + next week Sun (1) = 6 total
+  const result = [];
+  // This week: Sun Mon Tue Wed Thu
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(sunday); d.setDate(sunday.getDate() + i);
+    result.push(d);
+  }
+  // Next week: just Sun (day 7 after this Sunday)
+  const nextSun = new Date(sunday); nextSun.setDate(sunday.getDate() + 7);
+  // Full next week Sun–Thu
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(nextSun); d.setDate(nextSun.getDate() + i);
+    result.push(d);
+  }
+  return result; // 10 days: this Sun–Thu + next Sun–Thu
+}
+
+function isoKey(d) {
+  // Use local date parts to avoid UTC-offset producing wrong date
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function fmt(d) {
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  return dd+'/'+mm;
+}
+function fmtStatus(d) { return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
+function fmtLabel(d) { return DAY_NAMES[d.getDay()]; }
+
+// ---- Completion / archive helpers ----
+function isCompleted(row) { return !!row.completedAt; }
+function isArchived(row) {
+  if (!row.completedAt) return false;
+  const diff = Date.now() - row.completedAt;
+  return diff > 1 * 24 * 60 * 60 * 1000; // 1 day
+}
+function completedAgo(row) {
+  if (!row.completedAt) return '';
+  const days = Math.floor((Date.now() - row.completedAt) / 86400000);
+  if (days === 0) return 'today';
+  if (days === 1) return '1 day ago';
+  return days + ' days ago';
+}
+
+// ---- Data ----
+const data = []; // Loaded only from the new saving service.
+
+let _uidCounter = 1000;
+function uid() { return 'u' + (++_uidCounter); }
+
+// ---- Build header ----
+function buildHeader() {
+  const days = visibleDays;
+  const splitIdx = 5; // always: first 5 = this week (Sun–Thu), next 5 = next week (Sun–Thu)
+  const week1 = splitIdx>0 ? days.slice(0,splitIdx) : days;
+  const week2 = splitIdx>0 ? days.slice(splitIdx) : [];
+  const colTotal = 4 + days.length + 2;
+
+  let r1 = `<tr>
+    <th class="c-p" rowspan="2">#</th>
+    <th class="c-act" rowspan="2">Activity</th>
+    <th class="c-own" rowspan="2">Owner</th>
+    <th class="c-req" rowspan="2">Requester</th>
+    <th colspan="${week1.length}" style="text-align:center;font-size:10px;font-weight:600;color:var(--text-3);letter-spacing:0.04em;padding:5px 0;border-bottom:1px solid var(--border)">This week · ${fmt(week1[0])} – ${fmt(week1[week1.length-1])}</th>`;
+  if (week2.length) {
+    r1 += `<th colspan="${week2.length}" style="text-align:center;font-size:10px;font-weight:600;color:#1A4A8A;letter-spacing:0.04em;padding:5px 0;border-bottom:1px solid var(--border);border-left:2px solid var(--border-md);background:#F0F5FD">Next week · ${fmt(week2[0])} – ${fmt(week2[week2.length-1])}</th>`;
+  }
+  r1 += `<th class="c-sta" rowspan="2">Status updates</th><th class="c-edit" rowspan="2">Edit</th></tr>`;
+
+  let r2 = '<tr>';
+  days.forEach((d,i)=>{
+    const w2 = week2.length && i>=splitIdx;
+    const bg = w2 ? 'background:#F0F5FD;' : '';
+    const bl = (w2 && i===splitIdx) ? 'border-left:2px solid var(--border-md);' : '';
+    const lc = w2 ? '#5A80B0' : 'var(--text-3)';
+    r2 += `<th class="day" style="${bg}${bl}">${fmtLabel(d)}<br><span style="font-size:9px;font-weight:400;letter-spacing:0;color:${lc}">${fmt(d)}</span></th>`;
+  });
+  r2 += '</tr>';
+  document.getElementById('thead-rows').innerHTML = r1 + r2;
+}
+
+// ---- Build modal day toggles ----
+function buildModalDays(rowDays) {
+  const grid = document.getElementById('modal-days-grid');
+  grid.innerHTML = '';
+  const splitIdx = 5;
+  visibleDays.forEach((d,i)=>{
+    if (i===splitIdx) {
+      const sep = document.createElement('div');
+      sep.style.cssText='width:100%;height:0;border-top:1px dashed var(--border-md);margin:4px 0;';
+      grid.appendChild(sep);
+    }
+    const key = isoKey(d);
+    const btn = document.createElement('button');
+    btn.className = 'day-toggle' + (rowDays&&rowDays[key]?' on':'');
+    btn.dataset.day = key;
+    btn.textContent = fmtLabel(d)+' '+fmt(d);
+    btn.onclick = ()=>btn.classList.toggle('on');
+    grid.appendChild(btn);
+  });
+}
+
+// ---- Status cell ----
+const expandedNoteRows = new Set();
+function statusCell(row) {
+  const shown = (row.updates||[]).slice(0,expandedNoteRows.has(row.id) ? undefined : 3);
+  const done = isCompleted(row);
+  let html = '<ul class="status-list">';
+  shown.forEach((u,i)=>{
+    const eid = 'edit-'+row.id+'-'+u.id;
+    // lines: support both old string and new array
+    const lines = Array.isArray(u.lines) ? u.lines : [u.t];
+    const escapedVal = lines.join('\n').replace(/"/g,'&quot;');
+    html += `<li class="status-entry">
+      <span class="s-date">${u.d}</span>
+      <span class="s-dot${i===0&&!done?' latest':''}"></span>
+      <span class="s-lines">${lines.map(l=>`<span class="s-line">${l}</span>`).join('')}</span>
+      <span class="s-actions">
+        ${perm('canEditStatus')?`<button class="s-btn" title="Edit" onclick="openStatusEdit('${u.id}',${row.id})"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2l2 2L4 10H2V8L8 2z"/></svg></button>`:''}
+        ${perm('canEditStatus')?`<button class="s-btn del" title="Delete" onclick="deleteStatus('${u.id}',${row.id})"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg></button>`:''}
+      </span>
+    </li>
+    <div class="s-edit-form" id="${eid}">
+      <textarea class="s-edit-input" id="si-${row.id}-${u.id}" rows="2" oninput="autoGrow(this)" onkeydown="editKeyDown(event,'${u.id}',${row.id})">${lines.join('\n')}</textarea>
+      <div style="font-size:10px;color:var(--text-3);margin-top:-2px;">Enter = new line &nbsp;·&nbsp; Ctrl+Enter = save</div>
+      <div class="s-edit-row">
+        <button class="s-edit-save" onclick="saveStatusEdit('${u.id}',${row.id})">Save</button>
+        <button class="s-edit-cancel" onclick="closeStatusEdit('${u.id}',${row.id})">Cancel</button>
+      </div>
+    </div>`;
+  });
+  html += '</ul>';
+  if ((row.updates||[]).length > 3) html += `<button class="btn-cancel" style="font-size:11px;padding:3px 8px" onclick="toggleOlderUpdates(${row.id})">${expandedNoteRows.has(row.id) ? 'Show latest 3 updates' : 'Show all '+row.updates.length+' updates'}</button>`;
+
+  if (done) {
+    html += `<div class="done-badge"><svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,6 5,9 10,3"/></svg>Completed ${completedAgo(row)}</div>`;
+  } else if (perm('canEditStatus')) {
+    html += `<button class="add-update-btn" onclick="openForm(${row.id})"><svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg>Add update</button>`;
+    html += `<div class="add-form" id="form-${row.id}">
+      <textarea id="text-${row.id}" placeholder="What happened? Press Enter for a new line…" oninput="autoGrow(this)" onkeydown="addKeyDown(event,${row.id})"></textarea>
+      <div class="hint">Enter = new line &nbsp;·&nbsp; Ctrl+Enter = save</div>
+      <div class="form-row">
+        <button class="btn-save" onclick="saveUpdate(${row.id})">Save</button>
+        <button class="btn-cancel" onclick="closeForm(${row.id})">Cancel</button>
+        ${perm('canMarkDone')?`<label class="mark-done-check"><input type="checkbox" id="done-check-${row.id}"> Mark as completed</label>`:''}
+      </div>
+    </div>`;
+  }
+  return html;
+}
+
+// ---- Auto-grow textarea ----
+function autoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+
+// ---- Keyboard shortcuts ----
+function addKeyDown(e, id) {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveUpdate(id); }
+  // plain Enter = new line (default textarea behavior, nothing to override)
+}
+function editKeyDown(e, uid, rowId) {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveStatusEdit(uid, rowId); }
+}
+
+// ---- Status edit / delete ----
+function openStatusEdit(uid, rowId) {
+  const eid = 'edit-'+rowId+'-'+uid;
+  document.getElementById(eid).classList.add('open');
+  const ta = document.getElementById('si-'+rowId+'-'+uid);
+  ta.focus(); ta.select();
+  autoGrow(ta);
+}
+function closeStatusEdit(uid, rowId) {
+  document.getElementById('edit-'+rowId+'-'+uid).classList.remove('open');
+}
+
+
+
+// ---- Add update ----
+function openForm(id) {
+  document.getElementById('form-'+id).classList.add('open');
+  const ta = document.getElementById('text-'+id);
+  ta.focus();
+  autoGrow(ta);
+}
+function closeForm(id) {
+  document.getElementById('form-'+id).classList.remove('open');
+  const ta = document.getElementById('text-'+id);
+  ta.value=''; ta.style.height='auto';
+}
+
+
+function selectPri(btn) {
+  if (btn.getAttribute('data-locked') === 'true') return;
+  document.querySelectorAll('.pri-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+}
+function getSelectedPri() {
+  const sel = document.querySelector('.pri-btn.sel');
+  return sel ? sel.dataset.pri : '';
+}
+function setSelectedPri(val) {
+  document.querySelectorAll('.pri-btn').forEach(b=>{
+    b.classList.toggle('sel', b.dataset.pri === (val||''));
+  });
+}
+
+// ---- Edit modal ----
+function openModal(id) {
+  editingId=id;
+  const row=id===-1?{id:-1,p:'',owner:'',req:'',title:'',details:[],days:{},updates:[],completedAt:null}:data.find(r=>r.id===id);
+  document.getElementById('modal-title').textContent = id===-1?'Add new row':'Edit row';
+  const isNew = id === -1;
+  // Apply permission visibility
+  document.getElementById('modal-owner-group').style.display   = perm('canEditOwner')  ? '' : 'none';
+  document.getElementById('modal-days-group').style.display    = perm('canEditDays')   ? '' : 'none';
+  document.getElementById('modal-status-group').style.display  = perm('canEditStatus') ? '' : 'none';
+  document.getElementById('modal-done-group').style.display    = perm('canMarkDone')   ? '' : 'none';
+  // Priority: guests can set on new rows only, not change on existing
+  const priAllowed = canEditPriority(isNew);
+  // Reset all priority buttons to fully enabled state first
+  document.querySelectorAll('.pri-btn').forEach(b=>{
+    b.removeAttribute('disabled');
+    b.removeAttribute('data-locked');
+    b.style.cursor = 'pointer';
+    b.style.opacity = '';
+    b.style.pointerEvents = '';
+  });
+  document.getElementById('modal-pri-label').textContent = priAllowed
+    ? 'Priority'
+    : 'Priority' + (!isNew ? ' (read-only)' : '');
+  setSelectedPri(row.priority||'');
+  // Re-apply opacity AFTER setSelectedPri (which toggles .sel class)
+  if (!priAllowed) {
+    document.querySelectorAll('.pri-btn').forEach(b=>{
+      b.setAttribute('disabled', 'disabled');
+      b.setAttribute('data-locked', 'true');
+      b.style.cursor = 'not-allowed';
+      b.style.pointerEvents = 'none';
+      b.style.opacity = b.classList.contains('sel') ? '0.7' : '0.2';
+    });
+  }
+  document.getElementById('f-title').value = row.title;
+  // Populate 5 detail lines (migrate old `sub` string into line 0)
+  const details = row.details && row.details.length ? row.details : (row.sub ? [row.sub] : []);
+  for (let i=0;i<5;i++) document.getElementById('f-sub'+i).value = details[i]||'';
+  document.getElementById('f-owner').value = row.owner;
+  document.getElementById('f-req').value = row.req||'';
+  document.getElementById('f-status').value = '';
+  document.getElementById('f-done').checked = !!row.completedAt;
+  // btn-delete: only show for admin on existing rows (do NOT overwrite the permission check above)
+  document.getElementById('btn-delete').style.display = (!isNew && perm('canDeleteRow')) ? '' : 'none';
+  buildModalDays(row.days);
+  document.getElementById('modal-bg').classList.add('open');
+}
+function closeModal() { document.getElementById('modal-bg').classList.remove('open'); editingId=null; }
+function closeModalBg(e) { if(e.target===document.getElementById('modal-bg')) closeModal(); }
+
+
+
+
+function addNewRow() { openModal(-1); }
+
+// ---- Hide done toggle ----
+function toggleHideDone() {
+  hideDone = !hideDone;
+  const btn = document.getElementById('hide-done-btn');
+  if (hideDone) {
+    btn.style.background = '#EDFAF3';
+    btn.style.borderColor = '#166534';
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 7s2-4 6-4 6 4 6 4-2 4-6 4-6-4-6-4z"/><circle cx="7" cy="7" r="1.5"/></svg> Show completed`;
+  } else {
+    btn.style.background = '';
+    btn.style.borderColor = '#B0E8CC';
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 7s2-4 6-4 6 4 6 4-2 4-6 4-6-4-6-4z"/><circle cx="7" cy="7" r="1.5"/><line x1="2" y1="2" x2="12" y2="12"/></svg> Hide completed`;
+  }
+  render(currentFilter);
+}
+
+// ---- Archive toggle ----
+function toggleArchive() {
+  showArchive = !showArchive;
+  const btn = document.getElementById('archive-toggle-btn');
+  const banner = document.getElementById('archive-banner');
+  btn.classList.toggle('showing', showArchive);
+  btn.innerHTML = showArchive
+    ? `<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="1" y="3" width="12" height="9" rx="1"/><path d="M1 6h12M5 9h4"/></svg> Hide completed`
+    : `<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="1" y="3" width="12" height="9" rx="1"/><path d="M1 6h12M5 9h4"/></svg> Show completed`;
+  banner.classList.toggle('show', showArchive);
+  render(currentFilter);
+}
+
+// ---- Rollover: get today or next work day ----
+function todayIso() {
+  const d = new Date(); d.setHours(0,0,0,0); return isoKey(d);
+}
+function nextWorkDay() {
+  // Returns the ISO key of today if work day, else next work day
+  const d = new Date(); d.setHours(0,0,0,0);
+  while (!WORK_JS_DAYS.has(d.getDay())) d.setDate(d.getDate()+1);
+  return isoKey(d);
+}
+
+// Returns { key -> 'original' | 'rolled' } for display
+// If a scheduled day is in the past and task not completed,
+// its dot moves to the next-work-day slot.
+function getEffectiveDays(row) {
+  if (isCompleted(row)) return { map: row.days||{}, rolled: new Set() };
+  const today = new Date(); today.setHours(0,0,0,0);
+  const targetKey = nextWorkDay();
+  const effective = {}; const rolled = new Set();
+  const allKeys = Object.keys(row.days||{}).filter(k=>row.days[k]);
+
+  // Parse ISO date key as LOCAL date (avoid UTC midnight → previous local day bug)
+  function parseLocalDate(k) {
+    const [y,m,d] = k.split('-').map(Number);
+    const dt = new Date(y, m-1, d); // local midnight
+    return dt;
+  }
+  // Separate past and future/today days
+  const pastKeys   = allKeys.filter(k=>{ const d=parseLocalDate(k); return d < today; });
+  const futureKeys = allKeys.filter(k=>{ const d=parseLocalDate(k); return d >= today; });
+
+  // Future days always show as-is
+  futureKeys.forEach(k => { effective[k] = 1; });
+
+  // Only roll past days if there are NO future days remaining
+  if (futureKeys.length === 0 && pastKeys.length > 0) {
+    effective[targetKey] = 1;
+    rolled.add(targetKey);
+  }
+  // If future days exist, past days are simply dropped (task is still ongoing)
+
+  return { map: effective, rolled };
+}
+
+// ---- Dot cell ----
+function dotCell(row, dayDate, isW2, effectiveDays, highlightKey) {
+  const key = isoKey(dayDate);
+  const active = effectiveDays.map[key];
+  const wasRolled = effectiveDays.rolled.has(key);
+  const isFirstW2 = isW2 && dayDate.getDay()===0;
+  const isHighlighted = highlightKey && key===highlightKey;
+  let bg = isHighlighted ? 'background:#FFFBEA;' : (isW2 ? 'background:#F7FAFF;' : '');
+  const bl = isFirstW2 ? 'border-left:2px solid var(--border-md);' : '';
+  const extra = isHighlighted ? 'box-shadow:inset 0 0 0 2px #F59E0B;' : '';
+  const clr = {Gary:'#3A8AE0',Amir:'#5EA020',Samer:'#7060E0',Michael:'#C08010',Haytam:'#C03070'}[row.owner]||'#aaa';
+
+  let inner;
+  if (active) {
+    // wasRolled: show a slightly smaller amber dot to hint it moved, but no empty ring
+    const dotClr = wasRolled ? '#F59E0B' : clr;
+    const sz = wasRolled ? '8px' : '8px';
+    inner = `<span title="${wasRolled?'Rolled over from a previous day':''}" style="background:${dotClr};width:${sz};height:${sz};border-radius:50%;display:inline-block;"></span>`;
+  } else {
+    inner = `<span style="background:#C8D0DC;width:8px;height:8px;border-radius:50%;display:inline-block;opacity:0.3;"></span>`;
+  }
+  return `<td class="c-day" style="${bg}${bl}${extra}">${inner}</td>`;
+}
+
+// ---- Render ----
+function render(filter) {
+  const splitIdx=5;
+  const colTotal=4+visibleDays.length+2;
+  const searchQ=(document.getElementById('archive-search')?.value||'').toLowerCase();
+  const tbody=document.getElementById('tbody');
+  let html='';
+
+  // Compute day filter key
+  const todayKey = nextWorkDay();
+  const tomorrowKey = nextWorkDayAfterToday();
+  const dayFilterKey = dayFilter==='today' ? todayKey : dayFilter==='tomorrow' ? tomorrowKey : null;
+
+  // Day filter label for group header
+  const dayLabel = dayFilter==='today'
+    ? ` · Today ${fmt(new Date())}`
+    : dayFilter==='tomorrow'
+    ? ` · Tomorrow`
+    : '';
+
+  // Search inputs
+  const actQ  = (document.getElementById('search-activity')?.value||'').toLowerCase().trim();
+  const reqQ  = (document.getElementById('search-requester')?.value||'').toLowerCase().trim();
+  updateSearchUI();
+
+  // Unassigned group always shown at top
+  const unassignedRows = (() => {
+    let rows = data.filter(r=>!r.owner||r.owner==='');
+    rows = rows.filter(r=>{ const arch=isArchived(r); if(showArchive) return arch; if(!arch&&hideDone&&isCompleted(r)) return false; return !arch; });
+    if(showArchive&&searchQ) rows=rows.filter(r=>r.title.toLowerCase().includes(searchQ));
+    if(actQ) rows=rows.filter(r=>r.title.toLowerCase().includes(actQ)||(r.details||[]).some(d=>d.toLowerCase().includes(actQ)));
+    if(reqQ) rows=rows.filter(r=>(r.req||'').toLowerCase().includes(reqQ));
+    if(dayFilterKey) rows=rows.filter(r=>!!getEffectiveDays(r).map[dayFilterKey]);
+    rows=sortRows(rows);
+    return rows;
+  })();
+  if(unassignedRows.length && (filter==='all')) {
+    html+=`<tr class="group-row"><td colspan="${colTotal}" style="color:#C08010;background:#FFFBEA;">⚠ Unassigned</td></tr>`;
+    let rowIdx=0;
+    unassignedRows.forEach(r=>{
+      rowIdx++;
+      const done=isCompleted(r); const effectiveDays=getEffectiveDays(r);
+      html+=`<tr class="data-row${done?' done-row':''}" data-owner="">
+        <td class="c-p">${rowIdx}</td>
+        <td><div class="act-title${done?' act-done':''}">${r.priority?`<span class="pri-badge pri-${r.priority}">${r.priority}</span>`:''} ${r.title}</div>${(()=>{const lines=(r.details&&r.details.length)?r.details:(r.sub?[r.sub]:[]); return lines.map(l=>`<div class="act-sub">${l}</div>`).join('');})()}</td>
+        <td><span class="owner-badge owner-" style="background:#F0F0EC;color:var(--text-3);border:1px dashed var(--border-md);">Unassigned</span></td>
+        <td class="c-req">${r.req||'—'}</td>
+        ${visibleDays.map((d,i)=>dotCell(r,d,splitIdx>0&&i>=splitIdx,effectiveDays,dayFilterKey)).join('')}
+        <td>${statusCell(r)}</td>
+        <td style="text-align:center"><button class="edit-row-btn" onclick="openModal(${r.id})" title="Edit row"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5l2 2L5 11H3V9l6.5-6.5z"/></svg></button></td>
+      </tr>`;
+    });
+  }
+
+  OWNERS.forEach(owner=>{
+    if(filter!=='all'&&filter!==owner) return;
+    let ownerRows=data.filter(r=>r.owner===owner);
+
+    // archive / hide-done filter
+    ownerRows=ownerRows.filter(r=>{
+      const arch=isArchived(r);
+      if(showArchive) return arch;
+      if(!arch && hideDone && isCompleted(r)) return false;
+      return !arch;
+    });
+
+    // archive search
+    if(showArchive&&searchQ){
+      ownerRows=ownerRows.filter(r=>r.title.toLowerCase().includes(searchQ)||(r.sub||'').toLowerCase().includes(searchQ));
+    }
+
+    // Activity search
+    if(actQ){
+      ownerRows=ownerRows.filter(r=>{
+        const inTitle=r.title.toLowerCase().includes(actQ);
+        const inDetails=(r.details||[]).some(d=>d.toLowerCase().includes(actQ));
+        return inTitle||inDetails;
+      });
+    }
+
+    // Requester search
+    if(reqQ){
+      ownerRows=ownerRows.filter(r=>(r.req||'').toLowerCase().includes(reqQ));
+    }
+
+    // Day filter
+    if(dayFilterKey){
+      ownerRows=ownerRows.filter(r=>{
+        const eff=getEffectiveDays(r);
+        return !!eff.map[dayFilterKey];
+      });
+    }
+
+    // Sort by priority then earliest scheduled day
+    ownerRows = sortRows(ownerRows);
+
+    if(!ownerRows.length) return;
+
+    // Group header with active search info
+    let groupSuffix = dayLabel;
+    if(actQ) groupSuffix += ` · "${actQ}"`;
+    if(reqQ) groupSuffix += ` · req: "${reqQ}"`;
+    html+=`<tr class="group-row"><td colspan="${colTotal}">${owner}${groupSuffix}</td></tr>`;
+
+    let rowIdx=0;
+    ownerRows.forEach(r=>{
+      rowIdx++;
+      const done=isCompleted(r);
+      const vac=r.id===19?' vacation-row':'';
+      const doneClass=done?' done-row':'';
+      const actDone=done?' act-done':'';
+      const effectiveDays=getEffectiveDays(r);
+      html+=`<tr class="data-row${vac}${doneClass}" data-owner="${r.owner}">
+        <td class="c-p">${rowIdx}</td>
+        <td>
+          <div class="act-title${actDone}">
+            ${r.priority?`<span class="pri-badge pri-${r.priority}">${r.priority}</span>`:''}
+            ${r.title}
+          </div>
+          ${(()=>{
+            const lines=(r.details&&r.details.length)?r.details:(r.sub?[r.sub]:[]);
+            return lines.map(l=>`<div class="act-sub">${l}</div>`).join('');
+          })()}
+        </td>
+        <td><span class="owner-badge owner-${r.owner||''}">${r.owner||'Unassigned'}</span></td>
+        <td class="c-req">${r.req||'—'}</td>
+        ${visibleDays.map((d,i)=>dotCell(r,d,splitIdx>0&&i>=splitIdx,effectiveDays,dayFilterKey)).join('')}
+        <td>${statusCell(r)}</td>
+        <td style="text-align:center">
+          <button class="edit-row-btn" onclick="openModal(${r.id})" title="Edit row" style="${r.owner==='Unassigned'||!r.owner||perm('canEditOwner')||currentUser==='lab'?'':'opacity:0.4'}">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5l2 2L5 11H3V9l6.5-6.5z"/></svg>
+          </button>
+        </td>
+      </tr>`;
+    });
+  });
+  tbody.innerHTML=html;
+}
+
+// ---- Priority sort order ----
+const PRI_ORDER = {'P1':0,'High':1,'Mid':2,'Low':3,'':4};
+
+function priVal(r){ return PRI_ORDER[r.priority||''] ?? 4; }
+
+// Earliest effective day index (position in visibleDays), or 99 if none
+function earliestDayIdx(r){
+  const eff = getEffectiveDays(r);
+  for(let i=0;i<visibleDays.length;i++){
+    if(eff.map[isoKey(visibleDays[i])]) return i;
+  }
+  return 99;
+}
+
+function sortRows(rows){
+  return [...rows].sort((a,b)=>{
+    const pd = priVal(a) - priVal(b);
+    if(pd !== 0) return pd;
+    return earliestDayIdx(a) - earliestDayIdx(b);
+  });
+}
+
+// ---- Clear search ----
+function clearSearch(){
+  document.getElementById('search-activity').value='';
+  document.getElementById('search-requester').value='';
+  updateSearchUI();
+  render(currentFilter);
+}
+
+function updateSearchUI(){
+  const sa = document.getElementById('search-activity');
+  const sr = document.getElementById('search-requester');
+  const cb = document.getElementById('clear-search-btn');
+  const hasSearch = sa.value.trim()||sr.value.trim();
+  sa.classList.toggle('active', !!sa.value.trim());
+  sr.classList.toggle('active', !!sr.value.trim());
+  if(cb) cb.style.display = hasSearch ? '' : 'none';
+}
+
+function nextWorkDayAfterToday(){
+  // Returns ISO key of the next work day after today
+  const d = new Date(); d.setHours(0,0,0,0);
+  d.setDate(d.getDate()+1);
+  while(!WORK_JS_DAYS.has(d.getDay())) d.setDate(d.getDate()+1);
+  return isoKey(d);
+}
+
+function setDayFilter(df, btn){
+  dayFilter = df;
+  document.querySelectorAll('.filter-btn.f-day').forEach(b=>b.classList.remove('active-day'));
+  btn.classList.add('active-day');
+  render(currentFilter);
+}
+
+function setFilter(owner,btn){
+  currentFilter=owner;
+  document.querySelectorAll('.filter-btn:not(.f-day)').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  render(owner); updateSummary(owner);
+}
+
+function updateSummary(filter){
+  const bar=document.getElementById('summary-bar');
+  const activeRows=data.filter(r=>!isArchived(r));
+  const visible=filter==='all'?activeRows:activeRows.filter(r=>r.owner===filter);
+  const scheduled=visible.filter(r=>Object.values(r.days||{}).some(Boolean)).length;
+  const completed=visible.filter(r=>isCompleted(r)).length;
+  const archived=data.filter(r=>isArchived(r)).length;
+  let html=`<div class="stat-card"><div class="stat-label">Active tasks</div><div class="stat-value">${visible.length}</div></div>`;
+  html+=`<div class="stat-card"><div class="stat-label">Scheduled</div><div class="stat-value">${scheduled}</div></div>`;
+  html+=`<div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value" style="color:#166534">${completed}</div></div>`;
+  if(archived>0) html+=`<div class="stat-card"><div class="stat-label">Auto-hidden</div><div class="stat-value" style="color:var(--text-3);font-size:16px">${archived}</div></div>`;
+  if(filter==='all'){
+    const unassigned=activeRows.filter(r=>!r.owner||r.owner==='').length;
+    if(unassigned>0) html+=`<div class="stat-card"><div class="stat-label" style="color:#C08010;">⚠ Unassigned</div><div class="stat-value" style="font-size:17px;color:#C08010;">${unassigned}</div></div>`;
+    OWNERS.forEach(o=>{
+      const c=activeRows.filter(r=>r.owner===o).length;
+      html+=`<div class="stat-card"><div class="stat-label">${o}</div><div class="stat-value" style="font-size:17px">${c}</div></div>`;
+    });
+  }
+  bar.innerHTML=html;
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast'); t.textContent=msg;
+  t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+// ---- Excel Export ----
+function exportExcel(){
+  const wb=XLSX.utils.book_new();
+  const dayHdrs=visibleDays.map(d=>fmtLabel(d)+' '+fmt(d));
+  const headers=[
+    '#','Priority','Activity','Detail 1','Detail 2','Detail 3','Detail 4','Detail 5',
+    'Owner','Requester',...dayHdrs,
+    'Completed',
+    'Status 1 (date)','Status 1 (note)',
+    'Status 2 (date)','Status 2 (note)',
+    'Status 3 (date)','Status 3 (note)'
+  ];
+  const rows=[headers];
+  let rowNum=0;
+  OWNERS.forEach(owner=>{
+    data.filter(r=>r.owner===owner).forEach(r=>{
+      rowNum++;
+      const details=(r.details&&r.details.length)?r.details:(r.sub?[r.sub]:[]);
+      const dayVals=visibleDays.map(d=>(r.days&&r.days[isoKey(d)])?'✓':'');
+      const u=r.updates||[];
+      const uLines=(u,i)=>{
+        const lines=Array.isArray(u[i]?.lines)?u[i].lines:[u[i]?.t||''];
+        return lines.filter(Boolean).join(' | ');
+      };
+      rows.push([
+        rowNum,
+        r.priority||'',
+        r.title,
+        details[0]||'', details[1]||'', details[2]||'', details[3]||'', details[4]||'',
+        r.owner, r.req||'',
+        ...dayVals,
+        r.completedAt?new Date(r.completedAt).toLocaleDateString('en-GB'):'',
+        u[0]?u[0].d:'', uLines(u,0),
+        u[1]?u[1].d:'', uLines(u,1),
+        u[2]?u[2].d:'', uLines(u,2),
+      ]);
+    });
+  });
+
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+
+  // Style header row bold
+  const range=XLSX.utils.decode_range(ws['!ref']);
+  for(let C=range.s.c;C<=range.e.c;C++){
+    const addr=XLSX.utils.encode_cell({r:0,c:C});
+    if(!ws[addr]) continue;
+    ws[addr].s={font:{bold:true},fill:{fgColor:{rgb:'F0F0EC'}},alignment:{horizontal:'center'}};
+  }
+
+  const dayCols=visibleDays.map(()=>({wch:9}));
+  ws['!cols']=[
+    {wch:5},   // #
+    {wch:9},   // Priority
+    {wch:34},  // Activity
+    {wch:22},{wch:22},{wch:22},{wch:22},{wch:22}, // Details 1-5
+    {wch:11},  // Owner
+    {wch:18},  // Requester
+    ...dayCols,
+    {wch:14},  // Completed
+    {wch:12},{wch:44}, // Status 1
+    {wch:12},{wch:44}, // Status 2
+    {wch:12},{wch:44}, // Status 3
+  ];
+  ws['!freeze']={xSplit:0,ySplit:1,topLeftCell:'A2',activePane:'bottomLeft',state:'frozen'};
+  XLSX.utils.book_append_sheet(wb,ws,'Activity Tracker');
+  XLSX.writeFile(wb,'activity-tracker.xlsx');
+  showToast('Excel exported');
+}
+
+// ---- Excel Import ----
+
+
+// ============================================================
+// ---- ANALYTICS ----
+// ============================================================
+const OC = { Gary:'#3A8AE0', Amir:'#5EA020', Samer:'#7060E0', Michael:'#C08010', Haytam:'#C03070' };
+const PC = { P1:{bg:'#FEE2E2',fg:'#991B1B'}, High:{bg:'#FEF3C7',fg:'#92400E'}, Mid:{bg:'#DBEAFE',fg:'#1E40AF'}, Low:{bg:'#F0FDF4',fg:'#166534'} };
+let anPeriodVal = 'week';
+let anSelectedEng = OWNERS[0];
+
+function openAnalytics() {
+  if (!perm('canSeeSettings')) return;
+  document.getElementById('analytics-overlay').classList.add('open');
+  document.getElementById('an-data-note').textContent =
+    'Based on ' + data.length + ' tasks · ' + new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+  buildAnalytics();
+}
+function closeAnalytics() { document.getElementById('analytics-overlay').classList.remove('open'); }
+
+function anTab(id, btn) {
+  document.querySelectorAll('.an-tab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.an-tab-panel').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('an-panel-'+id).classList.add('active');
+}
+
+function anPeriod(p, btn) {
+  anPeriodVal = p;
+  document.querySelectorAll('.an-period-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  buildTimeline();
+}
+
+// ---- Helpers ----
+function activeTasks()    { return data.filter(r=>!isArchived(r)); }
+function completedTasks() { return data.filter(r=>isCompleted(r)&&!isArchived(r)); }
+function ownerTasks(owner){ return activeTasks().filter(r=>r.owner===owner); }
+
+// Extract product/BU keywords from title
+function extractProduct(r) {
+  const title = (r.title+' '+(r.details||[]).join(' ')).toUpperCase();
+  const products = ['WV2','WV3','CYCLOPS','SHREDDER','SPLINTER','GPD','DC','HAVOK','AMICRA','NPO','BU','PIBC','TOSA','PCBA','EO','CDR','TIA','BSK'];
+  const found = products.filter(p=>title.includes(p));
+  return found.length ? found[0] : 'Other';
+}
+
+function daysToComplete(r) {
+  if (!r.completedAt || !r.createdAt) return null;
+  return Math.round((r.completedAt - r.createdAt) / 86400000);
+}
+
+function getNextWeekKeys() {
+  // Next week Sun–Thu ISO keys
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dow = today.getDay();
+  const thisSun = new Date(today); thisSun.setDate(today.getDate() - (dow===0?0:dow));
+  const nextSun = new Date(thisSun); nextSun.setDate(thisSun.getDate()+7);
+  const keys = [];
+  for(let i=0;i<5;i++){ const d=new Date(nextSun); d.setDate(nextSun.getDate()+i); keys.push(isoKey(d)); }
+  return keys;
+}
+
+function getThisWeekKeys() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dow = today.getDay();
+  const sun = new Date(today); sun.setDate(today.getDate()-(dow===0?0:dow));
+  const keys=[];
+  for(let i=0;i<5;i++){ const d=new Date(sun); d.setDate(sun.getDate()+i); keys.push(isoKey(d)); }
+  return keys;
+}
+
+function bar(val, max, color) {
+  const pct = max>0 ? Math.round((val/max)*100) : 0;
+  return `<div class="an-bar-wrap"><div class="an-bar" style="width:${pct}%;background:${color};"></div></div>`;
+}
+
+// ---- Build all panels ----
+function buildAnalytics() {
+  buildOverview();
+  buildEngineers();
+  buildComparison();
+  buildTimeline();
+  buildNextWeek();
+}
+
+// ---- Overview ----
+function buildOverview() {
+  const all = activeTasks();
+  const done = completedTasks();
+  const thisWeekKeys = getThisWeekKeys();
+  const scheduledThisWeek = all.filter(r=>Object.keys(r.days||{}).some(k=>thisWeekKeys.includes(k)));
+  const unassigned = all.filter(r=>!r.owner||r.owner==='').length;
+
+  document.getElementById('an-overview-stats').innerHTML = [
+    ['Active tasks', all.length, 'total in tracker'],
+    ['Completed', done.length, 'not yet archived'],
+    ['Scheduled this week', scheduledThisWeek.length, 'have a day this week'],
+    ['Unassigned', unassigned, 'need owner'],
+    ['P1 tasks', all.filter(r=>r.priority==='P1').length, 'highest priority'],
+    ['High priority', all.filter(r=>r.priority==='High').length, 'high priority'],
+  ].map(([l,v,s])=>`<div class="an-card"><div class="an-card-label">${l}</div><div class="an-card-value">${v}</div><div class="an-card-sub">${s}</div></div>`).join('');
+
+  // By priority
+  const priCounts = ['P1','High','Mid','Low',''].map(p=>({
+    p: p||'None', count: all.filter(r=>(r.priority||'')===p).length
+  }));
+  const maxPri = Math.max(...priCounts.map(x=>x.count),1);
+  document.getElementById('an-by-priority').innerHTML =
+    '<tr><th>Priority</th><th>Count</th><th style="width:120px">Share</th></tr>' +
+    priCounts.map(x=>{
+      const pc2 = PC[x.p]; const color = pc2?pc2.fg:'#9A9A94';
+      const badge = pc2?`<span class="an-pri-pill" style="background:${pc2.bg};color:${pc2.fg}">${x.p}</span>`:x.p;
+      return `<tr><td>${badge}</td><td><strong>${x.count}</strong></td><td>${bar(x.count,maxPri,color)}</td></tr>`;
+    }).join('');
+
+  // By product
+  const prodMap = {};
+  all.forEach(r=>{ const p=extractProduct(r); prodMap[p]=(prodMap[p]||0)+1; });
+  const prods = Object.entries(prodMap).sort((a,b)=>b[1]-a[1]);
+  const maxProd = Math.max(...prods.map(x=>x[1]),1);
+  document.getElementById('an-by-product').innerHTML =
+    '<tr><th>Product / BU</th><th>Count</th><th style="width:120px">Share</th></tr>' +
+    prods.map(([p,c])=>`<tr><td><strong>${p}</strong></td><td>${c}</td><td>${bar(c,maxProd,'#7060E0')}</td></tr>`).join('');
+
+  // Completion rate
+  document.getElementById('an-completion-rate').innerHTML =
+    '<tr><th>Engineer</th><th>Active</th><th>Completed</th><th>Rate</th><th style="width:120px"></th></tr>' +
+    OWNERS.map(o=>{
+      const act = all.filter(r=>r.owner===o).length;
+      const comp = done.filter(r=>r.owner===o).length;
+      const rate = act+comp>0 ? Math.round(comp/(act+comp)*100) : 0;
+      return `<tr>
+        <td><span class="an-owner-dot" style="background:${OC[o]||'#888'}"></span>${o}</td>
+        <td>${act}</td><td>${comp}</td>
+        <td><strong>${rate}%</strong></td>
+        <td>${bar(rate,100,OC[o]||'#888')}</td>
+      </tr>`;
+    }).join('');
+
+  // Avg time to complete
+  document.getElementById('an-avg-time').innerHTML =
+    '<tr><th>Engineer</th><th>Tasks completed</th><th>Avg days</th><th>Fastest</th><th>Slowest</th></tr>' +
+    OWNERS.map(o=>{
+      const comp = data.filter(r=>r.owner===o&&r.completedAt&&r.createdAt);
+      const times = comp.map(r=>daysToComplete(r)).filter(t=>t!==null&&t>=0);
+      if(!times.length) return `<tr><td><span class="an-owner-dot" style="background:${OC[o]||'#888'}"></span>${o}</td><td colspan="4" style="color:var(--text-3)">No completed tasks with timestamps</td></tr>`;
+      const avg = Math.round(times.reduce((a,b)=>a+b,0)/times.length);
+      return `<tr>
+        <td><span class="an-owner-dot" style="background:${OC[o]||'#888'}"></span>${o}</td>
+        <td>${times.length}</td>
+        <td><strong>${avg} day${avg!==1?'s':''}</strong></td>
+        <td>${Math.min(...times)}d</td>
+        <td>${Math.max(...times)}d</td>
+      </tr>`;
+    }).join('');
+}
+
+// ---- Per Engineer ----
+function buildEngineers() {
+  // Pills
+  document.getElementById('an-eng-pills').innerHTML = OWNERS.map(o=>
+    `<button onclick="selectEngineer('${o}',this)" class="an-period-btn${o===anSelectedEng?' active':''}"
+      style="border-left:3px solid ${OC[o]||'#888'}">${o}</button>`
+  ).join('');
+  renderEngineerDetail(anSelectedEng);
+}
+
+function selectEngineer(o, btn) {
+  anSelectedEng = o;
+  document.querySelectorAll('#an-eng-pills .an-period-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderEngineerDetail(o);
+}
+
+function renderEngineerDetail(o) {
+  const all = activeTasks().filter(r=>r.owner===o);
+  const done = completedTasks().filter(r=>r.owner===o);
+  const thisWeekKeys = getThisWeekKeys();
+  const nextWeekKeys = getNextWeekKeys();
+  const thisWeek = all.filter(r=>Object.keys(r.days||{}).some(k=>thisWeekKeys.includes(k)));
+  const nextWeek = all.filter(r=>Object.keys(r.days||{}).some(k=>nextWeekKeys.includes(k)));
+
+  const priBreak = ['P1','High','Mid','Low'].map(p=>{
+    const c=all.filter(r=>r.priority===p).length;
+    const pc2=PC[p];
+    return c?`<span class="an-pri-pill" style="background:${pc2.bg};color:${pc2.fg};margin-right:4px">${p}: ${c}</span>`:'';
+  }).join('');
+
+  const color = OC[o]||'#888';
+
+  document.getElementById('an-eng-detail').innerHTML = `
+    <div class="an-grid" style="margin-bottom:20px;">
+      ${[['Active tasks',all.length],['This week',thisWeek.length],['Next week',nextWeek.length],['Completed',done.length]].map(([l,v])=>
+        `<div class="an-card"><div class="an-card-label">${l}</div><div class="an-card-value" style="color:${color}">${v}</div></div>`
+      ).join('')}
+    </div>
+    <div style="margin-bottom:12px;">${priBreak||'<span style="color:var(--text-3);font-size:12px">No priority set</span>'}</div>
+    <div class="an-section">
+      <div class="an-section-title">📋 All active tasks</div>
+      ${all.length ? `<table class="an-table">
+        <tr><th>#</th><th>Priority</th><th>Activity</th><th>Requester</th><th>Status updates</th><th>Scheduled days</th></tr>
+        ${all.map((r,i)=>{
+          const pc2=PC[r.priority||''];
+          const badge=pc2?`<span class="an-pri-pill" style="background:${pc2.bg};color:${pc2.fg}">${r.priority}</span>`:'—';
+          const sched=Object.keys(r.days||{}).filter(k=>r.days[k]).map(k=>k.slice(5)).join(', ')||'—';
+          const lastUpd=(r.updates&&r.updates[0])?r.updates[0].d+': '+(r.updates[0].t||''):'—';
+          return `<tr>
+            <td style="color:var(--text-3)">${i+1}</td>
+            <td>${badge}</td>
+            <td><strong>${r.title}</strong>${(r.details&&r.details.length)?'<br><span style="font-size:11px;color:var(--text-3)">'+r.details[0]+'</span>':''}</td>
+            <td>${r.req||'—'}</td>
+            <td style="font-size:11px;color:var(--text-2);max-width:200px">${lastUpd}</td>
+            <td style="font-size:11px">${sched}</td>
+          </tr>`;
+        }).join('')}
+      </table>` : '<div class="an-empty">No active tasks</div>'}
+    </div>
+    ${done.length?`<div class="an-section">
+      <div class="an-section-title">✅ Completed tasks</div>
+      <table class="an-table">
+        <tr><th>Activity</th><th>Requester</th><th>Days to complete</th></tr>
+        ${done.map(r=>{
+          const d=daysToComplete(r);
+          return `<tr><td><strong>${r.title}</strong></td><td>${r.req||'—'}</td><td>${d!==null?d+'d':'—'}</td></tr>`;
+        }).join('')}
+      </table>
+    </div>`:''}`;
+}
+
+// ---- Comparison ----
+function buildComparison() {
+  const all = activeTasks();
+  const done = completedTasks();
+  const thisWeekKeys = getThisWeekKeys();
+  const nextWeekKeys = getNextWeekKeys();
+
+  // Main comparison table
+  document.getElementById('an-compare-table').innerHTML =
+    `<tr><th>Engineer</th><th>Active</th><th>This week</th><th>Next week</th><th>Completed</th><th>P1</th><th>High</th><th>Avg days</th><th>Bar</th></tr>` +
+    OWNERS.map(o=>{
+      const tasks = all.filter(r=>r.owner===o);
+      const tw = tasks.filter(r=>Object.keys(r.days||{}).some(k=>thisWeekKeys.includes(k))).length;
+      const nw = tasks.filter(r=>Object.keys(r.days||{}).some(k=>nextWeekKeys.includes(k))).length;
+      const comp = done.filter(r=>r.owner===o).length;
+      const p1 = tasks.filter(r=>r.priority==='P1').length;
+      const hi = tasks.filter(r=>r.priority==='High').length;
+      const times = data.filter(r=>r.owner===o&&r.completedAt&&r.createdAt).map(r=>daysToComplete(r)).filter(t=>t!==null&&t>=0);
+      const avg = times.length ? Math.round(times.reduce((a,b)=>a+b,0)/times.length) : null;
+      return `<tr>
+        <td><span class="an-owner-dot" style="background:${OC[o]||'#888'}"></span><strong>${o}</strong></td>
+        <td>${tasks.length}</td><td>${tw}</td><td>${nw}</td><td>${comp}</td>
+        <td>${p1?`<span style="font-weight:700;color:#991B1B">${p1}</span>`:0}</td>
+        <td>${hi?`<span style="font-weight:700;color:#92400E">${hi}</span>`:0}</td>
+        <td>${avg!==null?avg+'d':'—'}</td>
+        <td>${bar(tasks.length,Math.max(...OWNERS.map(o2=>all.filter(r=>r.owner===o2).length),1),OC[o]||'#888')}</td>
+      </tr>`;
+    }).join('');
+
+  // Priority distribution per engineer
+  const priRows = OWNERS.map(o=>{
+    const tasks = all.filter(r=>r.owner===o);
+    const total = tasks.length||1;
+    return `<tr>
+      <td><span class="an-owner-dot" style="background:${OC[o]||'#888'}"></span>${o}</td>
+      ${['P1','High','Mid','Low'].map(p=>{
+        const c=tasks.filter(r=>r.priority===p).length;
+        const pc2=PC[p];
+        return `<td>${c?`<span class="an-pri-pill" style="background:${pc2.bg};color:${pc2.fg}">${c}</span>`:'—'}</td>`;
+      }).join('')}
+      <td style="color:var(--text-3)">${tasks.filter(r=>!r.priority).length} none</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('an-pri-dist').innerHTML =
+    '<tr><th>Engineer</th><th>P1</th><th>High</th><th>Mid</th><th>Low</th><th>None</th></tr>' + priRows;
+
+  // Product mix per engineer
+  const prodRows = OWNERS.map(o=>{
+    const tasks = all.filter(r=>r.owner===o);
+    const prodMap = {};
+    tasks.forEach(r=>{ const p=extractProduct(r); prodMap[p]=(prodMap[p]||0)+1; });
+    const top = Object.entries(prodMap).sort((a,b)=>b[1]-a[1]).slice(0,4);
+    return `<tr>
+      <td><span class="an-owner-dot" style="background:${OC[o]||'#888'}"></span>${o}</td>
+      <td>${top.map(([p,c])=>`<span style="margin-right:6px;font-size:12px"><strong>${p}</strong> ×${c}</span>`).join('')||'—'}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('an-product-mix').innerHTML =
+    '<tr><th>Engineer</th><th>Top products</th></tr>' + prodRows;
+}
+
+// ---- Timeline ----
+function buildTimeline() {
+  const all = activeTasks();
+  const thisWeekKeys = getThisWeekKeys();
+  const nextWeekKeys = getNextWeekKeys();
+
+  let filterKeys = null;
+  if (anPeriodVal==='week') filterKeys = thisWeekKeys;
+
+  // Activity by day
+  const dayMap = {};
+  all.forEach(r=>{
+    Object.keys(r.days||{}).forEach(k=>{
+      if (!r.days[k]) return;
+      if (filterKeys && !filterKeys.includes(k)) return;
+      if (!dayMap[k]) dayMap[k]={};
+      dayMap[k][r.owner] = (dayMap[k][r.owner]||0)+1;
+    });
+  });
+  const sortedDays = Object.keys(dayMap).sort();
+  document.getElementById('an-timeline-table').innerHTML = sortedDays.length ?
+    `<tr><th>Date</th>${OWNERS.map(o=>`<th><span style="color:${OC[o]}">${o}</span></th>`).join('')}<th>Total</th></tr>` +
+    sortedDays.map(k=>{
+      const row = dayMap[k];
+      const total = Object.values(row).reduce((a,b)=>a+b,0);
+      return `<tr><td><strong>${k.slice(5)}</strong></td>${OWNERS.map(o=>`<td>${row[o]||'—'}</td>`).join('')}<td><strong>${total}</strong></td></tr>`;
+    }).join('') : '<tr><td colspan="7" class="an-empty">No data for selected period</td></tr>';
+
+  // Completed over time
+  const compByDate = {};
+  data.filter(r=>r.completedAt).forEach(r=>{
+    const d = new Date(r.completedAt);
+    const k = isoKey(d);
+    if (!compByDate[k]) compByDate[k]=[];
+    compByDate[k].push(r);
+  });
+  const compDays = Object.keys(compByDate).sort().reverse().slice(0,14);
+  document.getElementById('an-completed-time').innerHTML = compDays.length ?
+    `<tr><th>Date</th><th>Tasks completed</th><th>Engineers</th></tr>` +
+    compDays.map(k=>{
+      const tasks = compByDate[k];
+      const engs = [...new Set(tasks.map(r=>r.owner))].join(', ');
+      return `<tr><td><strong>${k.slice(5)}</strong></td><td><strong>${tasks.length}</strong> — ${tasks.map(r=>r.title).join(', ')}</td><td>${engs||'—'}</td></tr>`;
+    }).join('') : '<tr><td colspan="3" class="an-empty">No completed tasks yet</td></tr>';
+}
+
+// ---- Next Week ----
+function buildNextWeek() {
+  const all = activeTasks();
+  const nextWeekKeys = getNextWeekKeys();
+  const nextWeekTasks = all.filter(r=>Object.keys(r.days||{}).some(k=>nextWeekKeys.includes(k)));
+
+  document.getElementById('an-nextweek-stats').innerHTML = [
+    ['Total planned', nextWeekTasks.length, 'tasks next week'],
+    ...OWNERS.map(o=>[o, nextWeekTasks.filter(r=>r.owner===o).length, 'tasks'])
+  ].map(([l,v,s])=>`<div class="an-card"><div class="an-card-label">${l}</div><div class="an-card-value" style="color:${OC[l]||'var(--text-1)'}">${v}</div><div class="an-card-sub">${s}</div></div>`).join('');
+
+  document.getElementById('an-nextweek-detail').innerHTML = OWNERS.map(o=>{
+    const tasks = nextWeekTasks.filter(r=>r.owner===o);
+    if (!tasks.length) return `<div style="padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;color:var(--text-3);"><span class="an-owner-dot" style="background:${OC[o]}"></span><strong>${o}</strong> — nothing scheduled next week</div>`;
+    return `<div style="padding:12px 0;border-bottom:1px solid var(--border);">
+      <div style="font-weight:600;font-size:13px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+        <span class="an-owner-dot" style="background:${OC[o]}"></span>${o}
+        <span style="font-size:11px;color:var(--text-3);font-weight:400">${tasks.length} task${tasks.length!==1?'s':''}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        ${tasks.map(r=>{
+          const pc2=PC[r.priority||''];
+          const badge=pc2?`<span class="an-pri-pill" style="background:${pc2.bg};color:${pc2.fg};margin-right:6px">${r.priority}</span>`:'';
+          const days=nextWeekKeys.filter(k=>r.days&&r.days[k]).map(k=>k.slice(8)+'/'+k.slice(5,7)).join(', ');
+          return `<div style="font-size:12px;padding:5px 8px;background:var(--bg);border-radius:6px;display:flex;align-items:center;justify-content:space-between;">
+            <span>${badge}${r.title}</span>
+            <span style="font-size:11px;color:var(--text-3);white-space:nowrap;margin-left:8px">${days}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  // Insights
+  const insights = [];
+  const busiest = OWNERS.reduce((a,o)=>nextWeekTasks.filter(r=>r.owner===o).length > (a?nextWeekTasks.filter(r=>r.owner===a).length:0)?o:a, null);
+  const lightest = OWNERS.filter(o=>nextWeekTasks.filter(r=>r.owner===o).length===0);
+  const p1next = nextWeekTasks.filter(r=>r.priority==='P1');
+  const highNext = nextWeekTasks.filter(r=>r.priority==='High');
+  const unscheduledP1 = activeTasks().filter(r=>r.priority==='P1'&&!Object.keys(r.days||{}).some(k=>r.days[k]));
+
+  if (busiest) insights.push(`📈 <strong>${busiest}</strong> has the heaviest next-week load with ${nextWeekTasks.filter(r=>r.owner===busiest).length} tasks.`);
+  if (lightest.length) insights.push(`🌿 <strong>${lightest.join(', ')}</strong> ${lightest.length>1?'have':'has'} nothing scheduled next week — consider load balancing.`);
+  if (p1next.length) insights.push(`🔴 <strong>${p1next.length} P1 task${p1next.length>1?'s':''}</strong> scheduled next week — ensure resources are allocated.`);
+  if (highNext.length) insights.push(`🟡 <strong>${highNext.length} High priority task${highNext.length>1?'s':''}</strong> next week.`);
+  if (unscheduledP1.length) insights.push(`⚠️ <strong>${unscheduledP1.length} P1 task${unscheduledP1.length>1?'s are':' is'} not scheduled</strong> for any day — action needed: ${unscheduledP1.map(r=>r.title).slice(0,3).join(', ')}.`);
+  const unassigned = activeTasks().filter(r=>!r.owner);
+  if (unassigned.length) insights.push(`👤 <strong>${unassigned.length} unassigned task${unassigned.length>1?'s':''}</strong> — assign to engineers before next week.`);
+  const oldRollover = activeTasks().filter(r=>{
+    const eff=getEffectiveDays(r); return eff.rolled.size>0;
+  });
+  if (oldRollover.length) insights.push(`⏰ <strong>${oldRollover.length} task${oldRollover.length>1?'s are':' is'} rolled over</strong> from past days without completion — review with engineers.`);
+
+  document.getElementById('an-insights').innerHTML = insights.length
+    ? insights.map(i=>`<div style="padding:6px 0;border-bottom:1px solid var(--border);">💡 ${i}</div>`).join('')
+    : '<div class="an-empty">No insights — everything looks well balanced!</div>';
+}
+
+// ============================================================
+// ---- ANALYTICS END ----
+// ============================================================
+
+// ---- Share Image ----
+const OWNER_COLORS = {
+  Gary:    {bg:'#E8F1FD', fg:'#1A4A8A', dot:'#3A8AE0'},
+  Amir:    {bg:'#E6F4DA', fg:'#235212', dot:'#5EA020'},
+  Samer:   {bg:'#EEEAFD', fg:'#3A2A9A', dot:'#7060E0'},
+  Michael: {bg:'#FDF0DC', fg:'#6A3A08', dot:'#C08010'},
+  Haytam:  {bg:'#FCE8F0', fg:'#7A1A40', dot:'#C03070'},
+};
+const PRI_COLORS = {
+  P1:   {bg:'#FEE2E2', fg:'#991B1B'},
+  High: {bg:'#FEF3C7', fg:'#92400E'},
+  Mid:  {bg:'#DBEAFE', fg:'#1E40AF'},
+  Low:  {bg:'#F0FDF4', fg:'#166534'},
+};
+
+let shareCanvas = null;
+let shareDay = 'today';
+
+function getShareRows(day) {
+  const key = day==='today' ? nextWorkDay() : nextWorkDayAfterToday();
+  const result = [];
+  OWNERS.forEach(owner => {
+    const rows = sortRows(
+      data.filter(r => r.owner===owner && !isArchived(r) && (() => {
+        const eff = getEffectiveDays(r);
+        return !!eff.map[key];
+      })())
+    );
+    if (rows.length) result.push({ owner, rows });
+  });
+  return result;
+}
+
+function openShareModal(day) {
+  shareDay = day;
+  const groups = getShareRows(day);
+  const now = new Date();
+  const dateStr = (day==='today'?'Today':'Tomorrow') + ' · ' +
+    (day==='today' ? now : new Date(now.getTime()+86400000))
+      .toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'short'});
+
+  document.getElementById('share-modal-title').textContent = 'Share — ' + dateStr;
+
+  if (!groups.length) {
+    document.getElementById('share-preview').innerHTML =
+      '<div style="padding:32px;text-align:center;color:#9A9A94;font-size:13px;">No tasks scheduled for ' + (day==='today'?'today':'tomorrow') + '</div>';
+    document.getElementById('share-modal-bg').classList.add('open');
+    return;
+  }
+
+  shareCanvas = buildShareCanvas(groups, dateStr);
+  const preview = document.getElementById('share-preview');
+  preview.innerHTML = '';
+  preview.appendChild(shareCanvas);
+  document.getElementById('share-modal-bg').classList.add('open');
+}
+
+function closeShareModal() { document.getElementById('share-modal-bg').classList.remove('open'); }
+function closeShareModalBg(e) { if(e.target===document.getElementById('share-modal-bg')) closeShareModal(); }
+
+function downloadShareImage() {
+  if (!shareCanvas) return;
+  const link = document.createElement('a');
+  link.download = 'tasks-' + shareDay + '-' + new Date().toISOString().slice(0,10) + '.png';
+  link.href = shareCanvas.toDataURL('image/png');
+  link.click();
+}
+
+function buildShareCanvas(groups, dateStr) {
+  const DPR = 2;
+  const W = 750;
+  const PAD = 36;
+  const INNER_W = W - PAD * 2;
+  const OWNER_H = 48;
+  const ROW_PAD_TOP = 20;
+  const ROW_PAD_BOT = 20;
+  const BADGE_H = 30;
+  const TITLE_SIZE = 26;
+  const SUB_SIZE = 21;
+  const REQ_SIZE = 19;
+  const LINE_H_TITLE = 36;
+  const LINE_H_SUB = 28;
+  const LINE_H_REQ = 30;
+  const TITLE_FONT = `600 ${TITLE_SIZE}px Inter, sans-serif`;
+  const SUB_FONT   = `400 ${SUB_SIZE}px Inter, sans-serif`;
+  const REQ_FONT   = `500 ${REQ_SIZE}px Inter, sans-serif`;
+  const BADGE_W = 74;
+  const TEXT_X = PAD + 18;
+  const TITLE_MAX_W = INNER_W - 22; // no badge offset — badge sits on its own row
+
+  // Temp canvas for text measurement
+  const tmp = document.createElement('canvas');
+  const tx  = tmp.getContext('2d');
+  function wrapLines(text, font, maxW) {
+    tx.font = font;
+    const words = text.split(' ');
+    const lines = []; let cur = '';
+    words.forEach(w => {
+      const t = cur ? cur+' '+w : w;
+      if (tx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; }
+      else cur = t;
+    });
+    if (cur) lines.push(cur);
+    return lines;
+  }
+
+  // ---- Unified card height (same logic used for measure AND draw) ----
+  function calcCardHeight(r) {
+    const details = (r.details&&r.details.length) ? r.details : (r.sub?[r.sub]:[]);
+    const hasBadge = !!PRI_COLORS[r.priority||''];
+    let h = ROW_PAD_TOP;
+    if (hasBadge) h += BADGE_H + 6;                          // badge row
+    h += wrapLines(r.title, TITLE_FONT, TITLE_MAX_W).length * LINE_H_TITLE;
+    details.forEach(d => {
+      h += wrapLines('· '+d, SUB_FONT, INNER_W - 22).length * LINE_H_SUB;
+    });
+    h += LINE_H_REQ;   // requester
+    h += ROW_PAD_BOT;
+    return h;
+  }
+
+  // ---- Total canvas height ----
+  const HEADER_H = 76;
+  const FOOTER_H = 52;
+  let totalH = HEADER_H + 12;
+  groups.forEach(({owner, rows}) => {
+    totalH += OWNER_H + 14;
+    rows.forEach(r => { totalH += calcCardHeight(r) + 10; });
+    totalH += 16;
+  });
+  totalH += FOOTER_H;
+
+  // ---- Create canvas ----
+  const canvas = document.createElement('canvas');
+  canvas.width        = W * DPR;
+  canvas.height       = totalH * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = totalH + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(DPR, DPR);
+
+  // Background
+  ctx.fillStyle = '#F7F7F5';
+  ctx.fillRect(0, 0, W, totalH);
+
+  // Header
+  ctx.fillStyle = '#1A1A18';
+  ctx.fillRect(0, 0, W, HEADER_H);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = `600 27px Inter, sans-serif`;
+  ctx.fillText('Process Lab  ·  ' + dateStr, PAD, 48);
+
+  function roundRect(cx, cy, cw, ch, r, color) {
+    ctx.beginPath();
+    ctx.moveTo(cx+r,cy);
+    ctx.lineTo(cx+cw-r,cy); ctx.arcTo(cx+cw,cy,cx+cw,cy+r,r);
+    ctx.lineTo(cx+cw,cy+ch-r); ctx.arcTo(cx+cw,cy+ch,cx+cw-r,cy+ch,r);
+    ctx.lineTo(cx+r,cy+ch); ctx.arcTo(cx,cy+ch,cx,cy+ch-r,r);
+    ctx.lineTo(cx,cy+r); ctx.arcTo(cx,cy,cx+r,cy,r);
+    ctx.closePath(); ctx.fillStyle=color; ctx.fill();
+  }
+
+  function drawWrapped(text, font, color, x, startY, maxW, lineH) {
+    ctx.font = font; ctx.fillStyle = color;
+    const words = text.split(' ');
+    let line='', cy=startY;
+    words.forEach(w => {
+      const t = line ? line+' '+w : w;
+      if (ctx.measureText(t).width > maxW && line) { ctx.fillText(line,x,cy); line=w; cy+=lineH; }
+      else line=t;
+    });
+    if (line) { ctx.fillText(line,x,cy); cy+=lineH; }
+    return cy;
+  }
+
+  let y = HEADER_H + 12;
+
+  groups.forEach(({owner, rows}) => {
+    const oc = OWNER_COLORS[owner] || {bg:'#F0F0EC',fg:'#1A1A18',dot:'#888'};
+
+    // Owner strip
+    roundRect(PAD, y, INNER_W, OWNER_H, 10, oc.bg);
+    ctx.font = `700 21px Inter, sans-serif`;
+    ctx.fillStyle = oc.fg;
+    ctx.fillText(owner.toUpperCase(), TEXT_X, y + OWNER_H/2 + 7);
+    y += OWNER_H + 14;
+
+    rows.forEach(r => {
+      const oc2 = OWNER_COLORS[r.owner] || {dot:'#888'};
+      const pc  = PRI_COLORS[r.priority||''];
+      const details = (r.details&&r.details.length) ? r.details : (r.sub?[r.sub]:[]);
+      const cardH = calcCardHeight(r);
+
+      // Card background + left bar
+      roundRect(PAD, y, INNER_W, cardH, 10, '#FFFFFF');
+      roundRect(PAD, y, 5, cardH, 3, oc2.dot);
+
+      let cy = y + ROW_PAD_TOP;
+
+      // Priority badge (own row, above title)
+      if (pc) {
+        roundRect(TEXT_X, cy, BADGE_W, BADGE_H, 6, pc.bg);
+        ctx.font = `700 16px Inter, sans-serif`;
+        ctx.fillStyle = pc.fg;
+        ctx.textAlign = 'center';
+        ctx.fillText(r.priority, TEXT_X + BADGE_W/2, cy + 20);
+        ctx.textAlign = 'left';
+        cy += BADGE_H + 6;
+      }
+
+      // Title
+      cy = drawWrapped(r.title, TITLE_FONT, '#1A1A18', TEXT_X, cy + TITLE_SIZE, TITLE_MAX_W, LINE_H_TITLE);
+
+      // Detail lines
+      details.forEach(d => {
+        cy = drawWrapped('· '+d, SUB_FONT, '#5A5A56', TEXT_X, cy + 2, INNER_W - 22, LINE_H_SUB);
+      });
+
+      // Requester
+      ctx.font = REQ_FONT;
+      ctx.fillStyle = '#9A9A94';
+      ctx.fillText('Requester: ' + (r.req||'—'), TEXT_X, cy + REQ_SIZE + 2);
+
+      y += cardH + 10;
+    });
+
+    y += 16;
+  });
+
+  // Footer
+  ctx.fillStyle = '#D0CFC9';
+  ctx.fillRect(PAD, y, INNER_W, 1);
+  ctx.fillStyle = '#9A9A94';
+  ctx.font = `400 17px Inter, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText(
+    'Process Lab · NVIDIA · ' +
+    new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}),
+    W/2, y + 32
+  );
+  ctx.textAlign = 'left';
+
+  return canvas;
+}
+
+// ---- User / Permission System ----
+// Levels: 'guest' | 'lab' | 'admin'
+// The saving service authenticates roles and enforces these permissions.
+let currentUser = null; // null = not logged in
+let loginTargetLevel = null;
+
+
+const PERMS = {
+  guest: {
+    canAddRow: true,
+    canEditPriorityOnNew: true,   // can set P when adding new task
+    canEditPriorityOnExisting: false, // cannot change P on existing tasks
+    canEditDetails: false,
+    canEditOwner: false, canEditDays: false, canEditStatus: false,
+    canMarkDone: false, canDeleteRow: false, canSeeArchive: false,
+    canSeeSettings: false
+  },
+  lab: {
+    canAddRow: true,
+    canEditPriorityOnNew: true,
+    canEditPriorityOnExisting: false,
+    canEditDetails: true,
+    canEditOwner: false, canEditDays: false, canEditStatus: true,
+    canMarkDone: true, canDeleteRow: false, canSeeArchive: true,
+    canSeeSettings: false
+  },
+  admin: {
+    canAddRow: true,
+    canEditPriorityOnNew: true,
+    canEditPriorityOnExisting: true,
+    canEditDetails: true,
+    canEditOwner: true, canEditDays: true, canEditStatus: true,
+    canMarkDone: true, canDeleteRow: true, canSeeArchive: true,
+    canSeeSettings: true
+  }
+};
+
+function perm(key) {
+  if (!currentUser) return false;
+  return !!(PERMS[currentUser] && PERMS[currentUser][key]);
+}
+function canEditPriority(isNewRow) {
+  if (!currentUser) return false;
+  const p = PERMS[currentUser];
+  if (!p) return false;
+  return isNewRow ? p.canEditPriorityOnNew : p.canEditPriorityOnExisting;
+}
+
+function selectLevel(level) {
+  loginTargetLevel = level;
+  if (level === 'guest') { doLogin('guest'); return; }
+  document.getElementById('login-step1').style.display = 'none';
+  const form = document.getElementById('login-pw-form');
+  form.classList.add('show');
+  document.getElementById('login-pw-input').value = '';
+  document.getElementById('login-err').classList.remove('show');
+  document.getElementById('login-pw-input').focus();
+}
+
+function backToLevels() {
+  document.getElementById('login-step1').style.display = '';
+  document.getElementById('login-pw-form').classList.remove('show');
+}
+
+
+
+function doLogin(level) {
+  currentUser = level;
+  document.getElementById('login-screen').classList.remove('show');
+  applyPermissionsToUI();
+  startAutoRefresh(); // begin polling for other users' changes
+  // Always render — data may already be loaded or will render when load completes
+  render(currentFilter);
+  updateSummary(currentFilter);
+  // If data is still loading (empty), wait and re-render once it arrives
+  if(data.length === 0){
+    const wait = setInterval(()=>{
+      if(data.length > 0){
+        clearInterval(wait);
+        render(currentFilter);
+        updateSummary(currentFilter);
+      }
+    }, 300);
+    // Stop waiting after 10s
+    setTimeout(()=>clearInterval(wait), 10000);
+  }
+}
+
+function doLogout() {
+  currentUser = null;
+  // Show login screen again
+  document.getElementById('login-step1').style.display = '';
+  document.getElementById('login-pw-form').classList.remove('show');
+  document.getElementById('login-screen').classList.add('show');
+}
+
+function applyPermissionsToUI() {
+  const p = PERMS[currentUser] || {};
+  // User pill
+  const pill = document.getElementById('user-pill');
+  const labels = { guest:'Guest', lab:'Lab Practical Engineer', admin:'Manager' };
+  const cls = { guest:'user-guest', lab:'user-lab', admin:'user-admin' };
+  pill.textContent = labels[currentUser] || '';
+  pill.className = 'user-pill ' + (cls[currentUser]||'user-guest');
+  // Settings + send report buttons
+  document.getElementById('settings-btn').style.display   = p.canSeeSettings ? '' : 'none';
+  document.getElementById('send-now-btn').style.display   = p.canSeeSettings ? '' : 'none';
+  document.getElementById('analytics-btn').style.display  = p.canSeeSettings ? '' : 'none';
+  document.getElementById('backup-btn').style.display     = p.canSeeSettings ? '' : 'none';
+  // Add row button
+  document.getElementById('add-row-btn').style.display = p.canAddRow ? '' : 'none';
+  // Archive btn
+  document.getElementById('archive-toggle-btn').style.display = p.canSeeArchive ? '' : 'none';
+}
+
+// ---- Settings ----
+let emailRecipients = ['ymahajna@nvidia.com'];
+
+
+
+function closeSettings() { document.getElementById('settings-modal-bg').classList.remove('open'); }
+
+
+
+function addRecipient() {
+  const inp = document.getElementById('new-recipient-input');
+  const val = inp.value.trim().toLowerCase();
+  if (!val || !val.includes('@')) { showToast('Enter a valid email'); return; }
+  if (emailRecipients.includes(val)) { showToast('Already in list'); inp.value=''; return; }
+  emailRecipients.push(val);
+  inp.value = '';
+  renderRecipientsList();
+}
+
+function removeRecipient(idx) {
+  emailRecipients.splice(idx, 1);
+  renderRecipientsList();
+}
+
+
+
+// ---- Daily summary builder ----
+function buildDailySummary() {
+  const todayStr = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+  const todayDate = new Date(); todayDate.setHours(0,0,0,0);
+
+  function isToday(dateStr) {
+    if (!dateStr) return false;
+    const d = new Date(dateStr); d.setHours(0,0,0,0);
+    return d.getTime() === todayDate.getTime();
+  }
+  function isTodayTs(ts) {
+    if (!ts) return false;
+    const d = new Date(ts); d.setHours(0,0,0,0);
+    return d.getTime() === todayDate.getTime();
+  }
+  function isTodayStatusDate(dateStr) {
+    // Status dates stored as "23 Oct" style — match month+day
+    if (!dateStr) return false;
+    const today = new Date();
+    const todayFmt = today.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
+    return dateStr.trim() === todayFmt.trim();
+  }
+
+  const newTasks       = data.filter(r => r.createdAt && isTodayTs(r.createdAt));
+  const completedTasks = data.filter(r => r.completedAt && isTodayTs(r.completedAt));
+  const updatedTasks   = data.filter(r =>
+    !isTodayTs(r.completedAt) &&
+    !(r.createdAt && isTodayTs(r.createdAt)) &&
+    (r.updates||[]).some(u => isTodayStatusDate(u.d))
+  );
+
+  function taskRow(r, highlightUpdates) {
+    const pri = r.priority ? `<span style="font-weight:700;color:#92400E;">[${r.priority}]</span> ` : '';
+    const details = (r.details&&r.details.length)?r.details:(r.sub?[r.sub]:[]);
+    let html = `<tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #E4E4E0;vertical-align:top;">
+        ${pri}<strong>${r.title}</strong><br>
+        ${details.map(d=>`<span style="font-size:12px;color:#5A5A56;">· ${d}</span>`).join('<br>')}
+      </td>
+      <td style="padding:8px 12px;border-bottom:1px solid #E4E4E0;vertical-align:top;white-space:nowrap;">
+        <span style="background:#E8F1FD;color:#1A4A8A;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">${r.owner||'—'}</span>
+      </td>
+      <td style="padding:8px 12px;border-bottom:1px solid #E4E4E0;font-size:12px;color:#5A5A56;vertical-align:top;">${r.req||'—'}</td>`;
+    if (highlightUpdates) {
+      const todayUpdates = (r.updates||[]).filter(u=>isTodayStatusDate(u.d));
+      html += `<td style="padding:8px 12px;border-bottom:1px solid #E4E4E0;font-size:12px;vertical-align:top;">
+        ${todayUpdates.map(u=>{
+          const lines = Array.isArray(u.lines)?u.lines:[u.t];
+          return lines.map(l=>`<strong>· ${l}</strong>`).join('<br>');
+        }).join('<br>')}
+      </td>`;
+    }
+    html += '</tr>';
+    return html;
+  }
+
+  function section(title, color, icon, rows, showUpdates) {
+    if (!rows.length) return `
+      <h3 style="font-size:13px;color:${color};margin:20px 0 6px;">${icon} ${title}</h3>
+      <p style="font-size:12px;color:#9A9A94;margin:0;">None today.</p>`;
+    const extraHeader = showUpdates ? '<th style="padding:8px 12px;background:#FAFAF8;font-size:11px;font-weight:600;color:#9A9A94;text-transform:uppercase;">Today\'s updates</th>' : '';
+    return `
+      <h3 style="font-size:13px;color:${color};margin:20px 0 6px;">${icon} ${title}</h3>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #E4E4E0;border-radius:8px;overflow:hidden;">
+        <tr style="background:#FAFAF8;">
+          <th style="padding:8px 12px;background:#FAFAF8;font-size:11px;font-weight:600;color:#9A9A94;text-transform:uppercase;text-align:left;">Activity</th>
+          <th style="padding:8px 12px;background:#FAFAF8;font-size:11px;font-weight:600;color:#9A9A94;text-transform:uppercase;">Owner</th>
+          <th style="padding:8px 12px;background:#FAFAF8;font-size:11px;font-weight:600;color:#9A9A94;text-transform:uppercase;">Requester</th>
+          ${extraHeader}
+        </tr>
+        ${rows.map(r=>taskRow(r,showUpdates)).join('')}
+      </table>`;
+  }
+
+  const totalActive    = data.filter(r=>!isArchived(r)).length;
+  const totalCompleted = data.filter(r=>isCompleted(r)&&!isArchived(r)).length;
+
+  const html = `
+<div style="font-family:Inter,Arial,sans-serif;max-width:700px;margin:0 auto;color:#1A1A18;">
+  <div style="background:#1A1A18;padding:20px 28px;border-radius:8px 8px 0 0;">
+    <h2 style="color:#fff;margin:0;font-size:18px;">🔬 Process Lab · Daily Summary</h2>
+    <p style="color:#9A9A94;margin:4px 0 0;font-size:13px;">
+      ${todayStr} · Auto-generated at 19:00
+    </p>
+  </div>
+  <div style="border:1px solid #E4E4E0;border-top:none;padding:20px 28px;border-radius:0 0 8px 8px;">
+    <div style="display:flex;gap:16px;margin-bottom:4px;flex-wrap:wrap;">
+      <span style="font-size:13px;">Active tasks: <strong>${totalActive}</strong></span>
+      <span style="font-size:13px;color:#166534;">Completed today: <strong>${completedTasks.length}</strong></span>
+      <span style="font-size:13px;color:#1A4A8A;">New today: <strong>${newTasks.length}</strong></span>
+      <span style="font-size:13px;color:#92400E;">Updated today: <strong>${updatedTasks.length}</strong></span>
+    </div>
+    ${section('New tasks added today','#1A4A8A','🆕', newTasks, false)}
+    ${section('Completed today','#166534','✅', completedTasks, false)}
+    ${section('Updated today','#92400E','✏️', updatedTasks, true)}
+    <hr style="border:none;border-top:1px solid #E4E4E0;margin:24px 0 12px;">
+    <p style="font-size:11px;color:#9A9A94;text-align:center;margin:0;">
+      Process Lab · NVIDIA Israel ·
+      <a href="${location.origin}/" style="color:#3A8AE0;">Open tracker →</a>
+    </p>
+  </div>
+</div>`;
+
+  return { html, todayStr, newTasks, completedTasks, updatedTasks };
+}
+
+// ---- Send now (mailto: — opens Outlook) ----
+function sendDailySummaryNow() {
+  if (!perm('canSeeSettings')) return;
+
+  const { newTasks, completedTasks, updatedTasks, todayStr } = buildDailySummary();
+
+  // Build plain-text email body (mailto: doesn't support HTML)
+  const lines = [];
+  lines.push('Process Lab · Daily Summary · ' + todayStr);
+  lines.push('Tracker: '+location.origin+'/');
+  lines.push('');
+
+  // New tasks
+  lines.push('━━━ NEW TASKS ADDED TODAY (' + newTasks.length + ') ━━━');
+  if (newTasks.length) {
+    newTasks.forEach(r => {
+      const pri = r.priority ? '[' + r.priority + '] ' : '';
+      const details = (r.details&&r.details.length)?r.details:(r.sub?[r.sub]:[]);
+      lines.push('• ' + pri + r.title + ' — Owner: ' + (r.owner||'—') + ' | Req: ' + (r.req||'—'));
+      details.forEach(d => lines.push('  · ' + d));
+    });
+  } else {
+    lines.push('  None today.');
+  }
+  lines.push('');
+
+  // Completed tasks
+  lines.push('━━━ COMPLETED TODAY (' + completedTasks.length + ') ━━━');
+  if (completedTasks.length) {
+    completedTasks.forEach(r => {
+      const pri = r.priority ? '[' + r.priority + '] ' : '';
+      lines.push('✓ ' + pri + r.title + ' — Owner: ' + (r.owner||'—') + ' | Req: ' + (r.req||'—'));
+    });
+  } else {
+    lines.push('  None today.');
+  }
+  lines.push('');
+
+  // Updated tasks
+  lines.push('━━━ UPDATED TODAY (' + updatedTasks.length + ') ━━━');
+  if (updatedTasks.length) {
+    updatedTasks.forEach(r => {
+      const pri = r.priority ? '[' + r.priority + '] ' : '';
+      lines.push('▸ ' + pri + r.title + ' — Owner: ' + (r.owner||'—'));
+      // Today's updates
+      const todayDate = new Date();
+      const todayFmt  = todayDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
+      const todayUpdates = (r.updates||[]).filter(u=>u.d&&u.d.trim()===todayFmt.trim());
+      todayUpdates.forEach(u => {
+        const lines2 = Array.isArray(u.lines) ? u.lines : [u.t];
+        lines2.forEach(l => lines.push('  >> ' + l));
+      });
+    });
+  } else {
+    lines.push('  None today.');
+  }
+  lines.push('');
+  lines.push('─────────────────────────────');
+  lines.push('Process Lab · NVIDIA Israel');
+
+  const subject = encodeURIComponent('Process Lab Daily Summary — ' + todayStr);
+  const body    = encodeURIComponent(lines.join('\r\n'));
+  const to      = emailRecipients.join(';');
+
+  // mailto: with all recipients
+  const mailto  = `mailto:${to}?subject=${subject}&body=${body}`;
+
+  // mailto has a ~2000 char URL limit in some clients — if too long, truncate body
+  if (mailto.length > 8000) {
+    // open with just subject and a note
+    const shortBody = encodeURIComponent(
+      'Process Lab Daily Summary — ' + todayStr + '\r\n\r\n' +
+      'New: ' + newTasks.length + '  Completed: ' + completedTasks.length + '  Updated: ' + updatedTasks.length + '\r\n\r\n' +
+      'Open tracker for full details:\r\n'+location.origin+'/'
+    );
+    window.location.href = `mailto:${to}?subject=${subject}&body=${shortBody}`;
+  } else {
+    window.location.href = mailto;
+  }
+
+  showToast('📧 Outlook opened — click Send');
+}
+
+function showSyncStatus(msg, isError){
+  const el = document.getElementById('sync-status');
+  if(!el) return;
+  el.textContent = msg;
+  el.style.color = isError ? '#C03030' : 'var(--text-3)';
+}
+
+</script>
+<script>
+/* Shared, deterministic change protocol. No network or storage side effects. */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.TrackerModel = api;
+})(typeof globalThis === 'object' ? globalThis : this, function () {
+  'use strict';
+  const fields = ['p', 'priority', 'title', 'details', 'sub', 'owner', 'req', 'days', 'completedAt', 'createdAt'];
+  const clone = x => JSON.parse(JSON.stringify(x));
+  function canonical(x) {
+    if (Array.isArray(x)) return '[' + x.map(canonical).join(',') + ']';
+    if (x && typeof x === 'object') return '{' + Object.keys(x).sort().map(k => JSON.stringify(k) + ':' + canonical(x[k])).join(',') + '}';
+    return JSON.stringify(x === undefined ? null : x);
+  }
+  const equal = (a, b) => canonical(a) === canonical(b);
+  class Conflict extends Error {
+    constructor(message, details = {}) { super(message); this.name = 'Conflict'; this.status = 409; this.details = details; }
+  }
+  function diff(before, after) {
+    const changes = [];
+    const oldTasks = new Map(before.data.map(t => [t.id, t]));
+    const newTasks = new Map(after.data.map(t => [t.id, t]));
+    for (const t of after.data) {
+      const prev = oldTasks.get(t.id);
+      if (!prev) { changes.push({ type: 'task.add', task: clone(t) }); continue; }
+      const patch = {};
+      for (const f of fields) if (!equal(prev[f], t[f])) patch[f] = { before: prev[f] ?? null, after: t[f] ?? null };
+      if (Object.keys(patch).length) changes.push({ type: 'task.edit', taskId: t.id, fields: patch });
+      const oldNotes = new Map((prev.updates || []).map(n => [n.id, n]));
+      const newNotes = new Map((t.updates || []).map(n => [n.id, n]));
+      for (const n of t.updates || []) {
+        const old = oldNotes.get(n.id);
+        if (!old) changes.push({ type: 'note.add', taskId: t.id, note: clone(n) });
+        else if (!equal(old, n)) changes.push({ type: 'note.edit', taskId: t.id, noteId: n.id, before: clone(old), after: clone(n) });
+      }
+      for (const n of prev.updates || []) if (!newNotes.has(n.id)) changes.push({ type: 'note.delete', taskId: t.id, noteId: n.id, before: clone(n) });
+    }
+    for (const t of before.data) if (!newTasks.has(t.id)) changes.push({ type: 'task.delete', taskId: t.id, before: clone(t) });
+    if (!equal(before.emailRecipients, after.emailRecipients)) changes.push({ type: 'settings.edit', before: before.emailRecipients || [], after: after.emailRecipients || [] });
+    return changes;
+  }
+  function apply(state, changes) {
+    const next = clone(state);
+    for (const c of changes) {
+      if (c.type === 'auth.edit') continue; // Private role settings are checked by the journal adapter.
+      if (c.type === 'settings.edit') {
+        if (!equal(next.emailRecipients, c.before) && !equal(next.emailRecipients, c.after)) throw new Conflict('Email recipients changed on another PC.', { change: c });
+        next.emailRecipients = clone(c.after); continue;
+      }
+      const t = next.data.find(t => t.id === (c.taskId ?? c.task?.id));
+      if (c.type === 'task.add') {
+        if (t) throw new Conflict('This activity ID already exists.', { change: c });
+        next.data.push(clone(c.task)); continue;
+      }
+      if (!t) throw new Conflict('This activity was deleted on another PC.', { change: c });
+      if (c.type === 'task.delete') {
+        if (!equal(t, c.before)) throw new Conflict('This activity has newer edits or notes. Review them before deleting.', { change: c, current: t });
+        next.data = next.data.filter(x => x.id !== t.id); continue;
+      }
+      if (c.type === 'task.edit') {
+        for (const [f, v] of Object.entries(c.fields)) {
+          if (!fields.includes(f)) throw new Error('Unknown activity field: ' + f);
+          if (!equal(t[f], v.before) && !equal(t[f], v.after)) throw new Conflict('Another PC changed “' + f + '”. Both versions are retained for review.', { change: c, field: f, current: t[f] ?? null });
+          t[f] = clone(v.after);
+        }
+        continue;
+      }
+      t.updates ||= [];
+      const n = t.updates.find(n => n.id === (c.noteId ?? c.note?.id));
+      if (c.type === 'note.add') {
+        if (n) throw new Conflict('This note ID already exists.', { change: c });
+        t.updates.unshift(clone(c.note)); continue;
+      }
+      if (!n) throw new Conflict('This note was deleted on another PC.', { change: c });
+      if (!equal(n, c.before) && !(c.type === 'note.edit' && equal(n, c.after))) throw new Conflict('Another PC edited this note. Both versions are retained for review.', { change: c, current: n });
+      if (c.type === 'note.edit') t.updates[t.updates.indexOf(n)] = clone(c.after);
+      else if (c.type === 'note.delete') t.updates = t.updates.filter(n => n.id !== c.noteId);
+      else throw new Error('Unknown change type.');
+    }
+    return next;
+  }
+  return { fields, clone, equal, canonical, Conflict, diff, apply };
+});
+
+(function (root, factory) {
+  const api = factory(typeof module === 'object' && module.exports ? require('./model.js') : root.TrackerModel);
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.TrackerSync = api;
+})(globalThis, function (M) {
+  'use strict';
+  const PREFIX = 'labtracker-v3:pending:';
+  const ARCHIVE = 'labtracker-v3:resolved:';
+  function uuid() {
+    const bytes = new Uint8Array(16); globalThis.crypto.getRandomValues(bytes);
+    return Array.from(bytes, n => n.toString(16).padStart(2,'0')).join('');
+  }
+  class Queue {
+    constructor(storage) { this.storage = storage; this.lastTime = 0; }
+    all() {
+      const rows = [];
+      // Each operation has its own key: different tabs never overwrite a shared queue array.
+      for (let i = 0; i < this.storage.length; i++) {
+        const key = this.storage.key(i);
+        if (key?.startsWith(PREFIX)) {
+          try { const row = JSON.parse(this.storage.getItem(key)); if (!row?.request?.id || key !== PREFIX + row.request.id) throw Error(); rows.push(row); }
+          catch { throw new Error('A pending-change record is unreadable. Export browser storage before proceeding; it has not been removed.'); }
+        }
+      }
+      return rows.sort((a,b) => a.createdAt - b.createdAt || a.request.id.localeCompare(b.request.id));
+    }
+    forUser(user) { return this.all().filter(r => r.owner.role === user.role && r.owner.actor === user.actor); }
+    put(row) {
+      const key = PREFIX + row.request.id, serialized = JSON.stringify(row);
+      this.storage.setItem(key, serialized);
+      if (this.storage.getItem(key) !== serialized) throw new Error('Browser storage could not retain this change. Keep this form open and copy the text.');
+    }
+    enqueue(changes, state, user, resolves = []) {
+      const row = { request:{ id:'op_' + uuid(), instance:state.instance, owner:{role:user.role,actor:user.actor}, changes:M.clone(changes), ...(resolves.length ? {resolves:M.clone(resolves)} : {}) }, owner:{ role:user.role, actor:user.actor }, createdAt:this.lastTime = Math.max(Date.now(),this.lastTime+1), status:'pending' };
+      this.put(row); return row;
+    }
+    acknowledge(row) { this.storage.removeItem(PREFIX + row.request.id); }
+    resolve(row, resolution) {
+      // Write the original work to an archive BEFORE removing it from the pending queue.
+      const archived = { ...row, resolution, resolvedAt:new Date().toISOString() };
+      const key = ARCHIVE + row.request.id, raw = JSON.stringify(archived);
+      this.storage.setItem(key,raw);
+      if (this.storage.getItem(key) !== raw) throw new Error('Could not preserve the original change. Nothing was discarded.');
+      this.acknowledge(row);
+    }
+    project(state, user) {
+      let next = M.clone(state); const conflicts = [];
+      for (const row of this.forUser(user)) {
+        if (row.request.instance !== state.instance) { conflicts.push({ row, error:'This work belongs to a different database instance.' }); continue; }
+        if (row.status === 'blocked') { conflicts.push({ row, error:row.error }); continue; }
+        try { next = M.apply(next, row.request.changes); }
+        catch (e) { conflicts.push({ row, error:e.message }); }
+      }
+      return { state:next, conflicts };
+    }
+  }
+  function rebase(state, changes) {
+    let current = M.clone(state); const result = [];
+    for (const original of changes) {
+      const c = M.clone(original), task = current.data.find(t => t.id === c.taskId);
+      if (c.type === 'task.edit') {
+        if (!task) throw new Error('The activity was deleted. Recover this work as a new activity after reviewing the export.');
+        for (const [field,v] of Object.entries(c.fields)) v.before = task[field] ?? null;
+      } else if (c.type === 'task.delete') {
+        if (!task) continue;
+        c.before = M.clone(task);
+      } else if (c.type === 'note.edit' || c.type === 'note.delete') {
+        const note = task?.updates.find(n => n.id === c.noteId);
+        if (!note) throw new Error('The note was deleted. Copy your retained text into a new note to recover it.');
+        c.before = M.clone(note);
+      } else if (c.type === 'settings.edit') c.before = current.emailRecipients;
+      current = M.apply(current,[c]); result.push(c);
+    }
+    return result;
+  }
+  return { Queue, uuid, rebase, PREFIX, ARCHIVE };
+});
+
+(function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./model.js'):root.TrackerModel);if(typeof module==='object'&&module.exports)module.exports=api;else root.TrackerJournal=api;})(globalThis,function(M){
+ 'use strict';
+ const MARKER='lab-activity-journal-v1';
+ const clone=M.clone;
+ const validId=x=>typeof x==='string'&&/^[A-Za-z0-9_-]{10,100}$/.test(x);
+ async function hash(value){const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(M.canonical(value)));return Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');}
+ function error(message,status=400){return Object.assign(new Error(message),{status});}
+ function note(n){if(!n||!validId(n.id)||typeof n.d!=='string'||typeof n.t!=='string'||n.t.length>20000||(n.lines&&(!Array.isArray(n.lines)||n.lines.some(l=>typeof l!=='string'||l.length>20000))))throw error('Invalid note.');}
+ function task(t){if(!t||!Number.isSafeInteger(t.id)||t.id<0||typeof t.title!=='string'||!t.title.trim()||t.title.length>1000||!Array.isArray(t.details)||t.details.some(l=>typeof l!=='string')||!t.days||Array.isArray(t.days)||!Array.isArray(t.updates))throw error('Invalid activity.');const seen=new Set();for(const n of t.updates){note(n);if(seen.has(n.id))throw error('Duplicate note ID.');seen.add(n.id);}}
+ function validateState(s){if(!s||!Array.isArray(s.data)||!Array.isArray(s.emailRecipients))throw error('Invalid dataset.');const seen=new Set();for(const t of s.data){task(t);if(seen.has(t.id))throw error('Duplicate activity ID.');seen.add(t.id);}}
+ function validateRequest(r){
+  if(!r||!validId(r.id)||!validId(r.instance)||!r.owner||!['guest','lab','admin'].includes(r.owner.role)||typeof r.owner.actor!=='string'||r.owner.actor.length<2||r.owner.actor.length>100||!Array.isArray(r.changes)||r.changes.length>1000||(!r.changes.length&&!r.resolves?.length)||(r.resolves||[]).some(x=>!validId(x)))throw error('Invalid change request.');
+  for(const c of r.changes){
+   if(c.type==='auth.edit'){if(!c.before||!c.after||['lab','admin'].some(k=>typeof c.before[k]!=='string'||typeof c.after[k]!=='string'||!c.after[k].trim()))throw error('Both role passwords are required.');}
+   else if(c.type==='task.add')task(c.task);
+   else if(c.type==='task.edit'){if(!Number.isSafeInteger(c.taskId)||!c.fields||!Object.keys(c.fields).length||Object.entries(c.fields).some(([k,v])=>!M.fields.includes(k)||!v||!Object.hasOwn(v,'before')||!Object.hasOwn(v,'after')))throw error('Invalid activity edit.');}
+   else if(c.type==='task.delete')task(c.before);
+   else if(c.type==='note.add')note(c.note);
+   else if(c.type==='note.edit'){note(c.before);note(c.after);if(c.noteId!==c.before.id||c.noteId!==c.after.id)throw error('Invalid note edit.');}
+   else if(c.type==='note.delete')note(c.before);
+   else if(c.type==='settings.edit'){if(!Array.isArray(c.before)||!Array.isArray(c.after)||c.after.some(x=>typeof x!=='string'))throw error('Invalid settings.');}
+   else throw error('Unknown change type.');
+   if(!['settings.edit','auth.edit','task.add'].includes(c.type)&&(!Number.isSafeInteger(c.taskId)||c.taskId<0))throw error('Invalid activity ID.');
+  }
+ }
+ function authorize(r,user){
+  if(!user||r.owner.actor!==user.actor||r.owner.role!==user.role)throw error('Sign in with the original name and role for this pending change.',403);
+  for(const c of r.changes){if(user.role==='admin')continue;if(user.role==='guest'&&c.type!=='task.add')throw error('Guest users may add new activities only.',403);if(['settings.edit','auth.edit','task.delete'].includes(c.type))throw error('Manager permission required.',403);if(c.type==='task.edit'&&Object.keys(c.fields).some(k=>!['title','details','sub','req','completedAt'].includes(k)))throw error('Manager permission required for this field.',403);if(c.type==='task.add'&&(c.task.owner||Object.keys(c.task.days).length||c.task.completedAt||(user.role==='guest'&&c.task.updates.length)))throw error('New activities must be unassigned.',403);}
+ }
+ function partial(state,changes){const ids=new Set(changes.map(c=>c.taskId??c.task?.id));return {data:clone(state.data.filter(t=>ids.has(t.id))),emailRecipients:clone(state.emailRecipients)};}
+ async function reduce(baseline,records){
+  validateState(baseline.state);
+  const groups=new Map(),issues=[];
+  for(const entry of records){
+   const r=entry.record;try{validateRequest(r.request);if(r.request.instance!==baseline.instance)continue;if(!Array.isArray(r.parents)||r.parents.some(p=>!validId(p)||p===r.request.id))throw error('Invalid change dependencies.');
+    const old=groups.get(r.request.id);if(old){if(!M.equal(old.request,r.request)){old.ambiguous=true;issues.push({operationId:r.request.id,error:'Different contents share an operation ID; all versions retained.'});}else{for(const p of r.parents)old.parents.add(p);old.sequence=Math.min(old.sequence,entry.sequence);}}
+    else groups.set(r.request.id,{request:r.request,parents:new Set(r.parents),sequence:entry.sequence,at:entry.at});
+   }catch(e){issues.push({commentId:entry.sequence,error:e.message});}
+  }
+  let state=clone(baseline.state),passwords=clone(baseline.passwords||{});const remaining=new Map(groups),applied=new Set(),heads=new Set(groups.keys()),conflicts=new Map(),resolved=new Set(),history=[];
+  while(remaining.size){
+   const ready=[...remaining].filter(([,g])=>!g.ambiguous&&[...g.parents].every(p=>applied.has(p))).sort((a,b)=>a[1].sequence-b[1].sequence||a[0].localeCompare(b[0]));
+   if(!ready.length){for(const [id] of remaining)issues.push({operationId:id,error:'A journal dependency is missing or damaged.'});break;}
+   const [id,g]=ready[0];remaining.delete(id);const before=partial(state,g.request.changes);let conflict=null;
+   try{let nextPasswords=clone(passwords);for(const c of g.request.changes.filter(c=>c.type==='auth.edit')){if(!M.equal(passwords,c.before)&&!M.equal(passwords,c.after))throw error('Role settings changed on another PC. Review before replacing them.',409);nextPasswords=clone(c.after);}const next=M.apply(state,g.request.changes);validateState(next);state=next;passwords=nextPasswords;for(const target of g.request.resolves||[])resolved.add(target);}
+   catch(e){conflict=e;conflicts.set(id,{operationId:id,owner:g.request.owner,changes:g.request.changes,error:e.message});}
+   applied.add(id);for(const p of g.parents)heads.delete(p);
+   history.push({seq:g.sequence,op_id:id,at:g.at,role:g.request.owner.role,actor:g.request.owner.actor,changes:g.request.changes,before,after:partial(state,g.request.changes),status:conflict?'conflict':'applied'});
+  }
+  for(const id of resolved)conflicts.delete(id);
+  return {state:{...state,instance:baseline.instance,initialized:true,revision:applied.size+1,savedAt:history.at(-1)?.at||baseline.sourceSavedAt,version:5,folderMode:true,storageKind:'gist-journal',folderConflicts:[...conflicts.values()],folderIssues:issues},passwords,groups,heads:[...heads].filter(x=>applied.has(x)).sort(),conflicts,resolved,history};
+ }
+ async function makeBaseline(input,instance){
+  const state={data:[],emailRecipients:input.emailRecipients||[]};const used=new Set();
+  for(const raw of input.data||[]){if(used.has(raw.id))throw error('Duplicate activity ID in source.');used.add(raw.id);const t={...clone(raw),id:raw.id,title:raw.title,p:raw.p??'–',priority:raw.priority||'',owner:raw.owner||'',req:raw.req||'',details:raw.details||(raw.sub?[raw.sub]:[]),sub:raw.sub||'',days:raw.days||{},completedAt:raw.completedAt??null,updates:[]};let i=0;for(const n of raw.updates||[])t.updates.push({...clone(n),id:'n_'+(await hash({instance,task:raw.id,index:i++,note:n})).slice(0,32),d:n.d||'',t:n.t||n.lines?.[0]||''});state.data.push(t);}
+  validateState(state);return {marker:MARKER,kind:'baseline',instance,state,sourceSavedAt:input.savedAt||null,createdAt:new Date().toISOString(),passwords:clone(input.passwords||{}),sourceHash:await hash({data:input.data,emailRecipients:input.emailRecipients||[],passwords:input.passwords||{}})};
+ }
+ return {MARKER,hash,error,validateState,validateRequest,authorize,reduce,makeBaseline};
+});
+
+(function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./model.js'):root.TrackerModel,typeof module==='object'&&module.exports?require('./journal.js'):root.TrackerJournal);if(typeof module==='object'&&module.exports)module.exports=api;else root.TrackerGistApi=api;})(globalThis,function(M,J){
+ 'use strict';
+ class GistApi{
+  constructor({gistId,getToken,fetch:fetcher=globalThis.fetch.bind(globalThis),storage=globalThis.sessionStorage}){if(!/^[a-f0-9]{20,40}$/.test(gistId))throw Error('Invalid Gist configuration.');this.base='https://api.github.com/gists/'+gistId;this.getToken=getToken;this.fetch=fetcher;this.storage=storage;this.cache=new Map();this.cooldown=0;this.owner=null;this.last=null;this.sessionKey='labtracker-gist-session-v5';this.busy=null;}
+  async call(method,path='',value){
+   if(Date.now()<this.cooldown)throw J.error('GitHub asked us to wait. Pending changes remain on this browser.',503);
+   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+   try{
+    const token=this.getToken();if(!token)throw J.error('The tracker’s existing GitHub connection is unavailable. Pending changes are retained.',401);
+    const res=await this.fetch(this.base+path,{method,headers:{Accept:'application/vnd.github+json',Authorization:'Bearer '+token,...(value!==undefined?{'Content-Type':'application/json'}:{})},...(value!==undefined?{body:JSON.stringify(value)}:{}),cache:'no-store',signal:controller.signal});
+    if(!res.ok){let b={};try{b=await res.json();}catch{}const retry=res.headers.get('retry-after');if(res.status===429||(res.status===403&&(retry||/rate limit|abuse/i.test(b.message||'')))){this.cooldown=Date.now()+Math.max(60,Number(retry)||60)*1000;throw J.error('GitHub rate limit reached. Changes stay queued and will retry after the required pause.',503);}throw J.error('GitHub HTTP '+res.status+': '+String(b.message||'request rejected').slice(0,200),res.status);}
+    return await res.json();
+   }finally{clearTimeout(timer);}
+  }
+  async read(){
+   if(this.busy)return this.busy;
+   this.busy=this.readAll();try{return await this.busy;}finally{this.busy=null;}
+  }
+  async readAll(){
+   if(!this.owner){const gist=await this.call('GET');this.owner=gist.owner.login.toLowerCase();this.legacy=gist.files?.['activity-tracker-data.json'];if(gist.comments_enabled===false)throw J.error('GitHub comments are disabled for this Gist. The journal cannot be activated with the current settings.',403);}
+   const seen=new Set(),issues=[];let page=1;
+   for(;;page++){
+    if(page>500)throw J.error('The journal is too large for a complete read. Editing is paused; history has not been discarded.',503);
+    const rows=await this.call('GET','/comments?per_page=100&page='+page);if(!Array.isArray(rows))throw J.error('Unexpected GitHub journal response.',503);
+    for(const comment of rows){
+     if(comment.user?.login?.toLowerCase()!==this.owner)continue;
+     let envelope;try{envelope=JSON.parse(comment.body);}catch{continue;}
+     if(envelope.marker!==J.MARKER)continue;
+     if(!Number.isSafeInteger(comment.id)||comment.id<1)throw J.error('Unsupported journal record ID. Editing is paused.',503);
+     const key=String(comment.id),old=this.cache.get(key);seen.add(key);
+     const bodyHash=await J.hash(envelope);
+     if(old){if(old.bodyHash!==bodyHash)issues.push({commentId:comment.id,error:'An existing journal record was modified outside the tracker. Its original browser copy is retained.'});continue;}
+     if(!envelope.record||envelope.sha256!==await J.hash(envelope.record)){issues.push({commentId:comment.id,error:'An incomplete or damaged journal record was retained for recovery.'});continue;}
+     this.cache.set(key,{record:envelope.record,sequence:comment.id,at:comment.created_at,bodyHash});
+    }
+    if(rows.length<100)break;
+   }
+   for(const [id,entry] of this.cache)if(!seen.has(id))issues.push({commentId:entry.sequence,error:'A previously confirmed record is absent from GitHub. Its original browser copy is retained; restore it from backup.'});
+   const all=[...this.cache.values()].sort((a,b)=>a.sequence-b.sequence),baselines=all.filter(x=>x.record.kind==='baseline');
+   if(!baselines.length){this.setupRequired=true;throw J.error('Manager initialization is required. Existing cloud data has not been replaced.',428);}
+   this.setupRequired=false;
+   const baseline=baselines[0].record;
+   for(const b of baselines.slice(1))if(b.record.sourceHash!==baseline.sourceHash)issues.push({commentId:b.sequence,error:'A different initialization snapshot is retained for review.'});
+   const result=await J.reduce(baseline,all.filter(x=>x.record.kind==='change'));
+   result.state.folderIssues.push(...issues);result.state.readOnly=issues.length>0;result.state.baselineSourceSavedAt=baseline.sourceSavedAt;result.state.baselineCommentId=baselines[0].sequence;
+   result.baseline=baseline;result.history.unshift({seq:baselines[0].sequence,at:baselines[0].at,actor:'Migration snapshot',role:'admin',changes:[{type:'initial.import'}],before:{data:[],emailRecipients:[]},after:M.clone(baseline.state)});
+   this.last=result;return result;
+  }
+  stored(){try{return JSON.parse(this.storage.getItem(this.sessionKey)||'null');}catch{return null;}}
+  async user(result){const stored=this.stored();if(!stored||stored.expires<Date.now())return null;const expected=result.passwords?.[stored.user.role];if(stored.user.role!=='guest'&&stored.passwordHash!==await J.hash(expected||''))return null;return stored.user;}
+  async login({role,password,actor}){
+   if(!['guest','lab','admin'].includes(role)||typeof actor!=='string'||actor.trim().length<2||actor.trim().length>100)throw J.error('Enter your name and choose a valid role.',401);
+   let result;try{result=await this.read();}catch(e){
+    if(e.status!==428)throw e;
+    if(role!=='admin')throw J.error('The manager must initialize the upgrade once before the team signs in.',428);
+    // Use a fresh cloud snapshot at the explicit first-manager-login action.
+    const gist=await this.call('GET'),file=gist.files?.['activity-tracker-data.json'];
+    if(!file?.content||file.truncated)throw J.error('The current cloud dataset could not be read completely. No initialization was attempted.',503);
+    let source;try{source=JSON.parse(file.content);}catch{throw J.error('The current cloud dataset is not valid JSON. It has not been replaced.',503);}
+    if(password!==source.passwords?.admin)throw J.error('Incorrect manager password.',401);
+    const bytes=new Uint8Array(16);crypto.getRandomValues(bytes);const id='baseline_'+Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
+    const baseline=await J.makeBaseline(source,id),body=JSON.stringify({marker:J.MARKER,record:baseline,sha256:await J.hash(baseline)});
+    if(new TextEncoder().encode(body).length>60000)throw J.error('The initial dataset exceeds this journal’s entry limit. Existing data has not been replaced.',413);
+    await this.call('POST','/comments',{body});result=await this.read();
+   }
+   if(role!=='guest'&&password!==result.passwords?.[role])throw J.error('Incorrect password.',401);
+   const user={role,actor:actor.trim()};this.storage.setItem(this.sessionKey,JSON.stringify({user,passwordHash:await J.hash(password||''),expires:Date.now()+12*3600000}));return {user};
+  }
+  async write(request){
+   const before=await this.read(),user=await this.user(before);if(!user)throw J.error('Sign in again; pending changes are retained.',401);
+   if(before.state.readOnly)throw J.error('A journal integrity issue needs recovery. Pending work is retained.',409);
+   J.validateRequest(request);J.authorize(request,user);
+   if(request.instance!==before.baseline.instance)throw J.error('This work belongs to another tracker instance. Export it for recovery.',409);
+   const old=before.groups.get(request.id);
+   if(old){if(!M.equal(old.request,request))throw J.error('Operation ID belongs to different work.',409);if(before.conflicts.has(request.id))throw Object.assign(J.error('Your change is retained in history and needs review.',409),{details:before.conflicts.get(request.id)});return {ok:true,replayed:true,revision:before.state.revision};}
+   for(const id of request.resolves||[]){const conflict=before.conflicts.get(id);if(!conflict)throw J.error('Refresh this conflict before resolving it.',409);if(user.role!=='admin'&&conflict.owner.actor!==user.actor)throw J.error('Only the author or manager may resolve this conflict.',403);}
+   const record={kind:'change',request:M.clone(request),parents:before.heads};const envelope={marker:J.MARKER,record,sha256:await J.hash(record)};const body=JSON.stringify(envelope);
+   if(new TextEncoder().encode(body).length>60000)throw J.error('This change exceeds the journal entry limit. Export the retained work and split the import into smaller batches.',413);
+   const created=await this.call('POST','/comments',{body});
+   if(!created.id||created.body!==body)throw J.error('The journal write could not be verified. The same request will be retried safely.',503);
+   // Retain our confirmed response even if the next collection read is delayed.
+   this.cache.set(String(created.id),{record,sequence:created.id,at:created.created_at,bodyHash:await J.hash(envelope)});
+   const after=await this.read();if(after.conflicts.has(request.id))throw Object.assign(J.error('Both versions are retained. Open Pending / drafts to review this conflict.',409),{details:after.conflicts.get(request.id)});
+   if(request.changes.some(c=>c.type==='auth.edit')&&!after.conflicts.has(request.id)){const stored=this.stored();if(stored){stored.passwordHash=await J.hash(after.passwords[stored.user.role]||'');this.storage.setItem(this.sessionKey,JSON.stringify(stored));}}
+   return {ok:true,operationId:request.id,revision:after.state.revision,savedAt:created.created_at};
+  }
+  async request(url,payload){
+   if(url==='/api/login')return this.login(payload);
+   if(url==='/api/logout'){this.storage.removeItem(this.sessionKey);return {ok:true};}
+   let result;try{result=await this.read();}catch(e){if(url==='/api/session'&&e.status===428)return {user:null,allowGuest:false,setupRequired:true,protocol:5};throw e;}const user=await this.user(result);
+   if(url==='/api/session')return {user,allowGuest:true,protocol:5};
+   if(!user)throw J.error('Sign in again. Your pending work and drafts are retained.',401);
+   if(url==='/api/state')return M.clone(result.state);
+   if(url==='/api/operations')return this.write(payload);
+   if(user.role!=='admin')throw J.error('Manager permission required.',403);
+   if(url==='/api/backup'){const {passwords,...baseline}=result.baseline;return {...M.clone(result.state),journalBackup:{baseline,records:[...this.cache.values()].filter(x=>x.record.kind!=='baseline').map(x=>({sequence:x.sequence,at:x.at,record:{...x.record,request:{...x.record.request,changes:x.record.request.changes.map(c=>c.type==='auth.edit'?{type:'auth.edit',redacted:true}:c)}}}))}};}
+   if(url.startsWith('/api/history/')){const item=result.history.find(h=>h.seq===Number(url.split('/').pop()));if(!item)throw J.error('History entry not found.',404);return M.clone(item);}
+   if(url.startsWith('/api/history')){const before=new URL(url,'https://tracker.invalid').searchParams.get('before');const rows=[...result.history].sort((a,b)=>b.seq-a.seq).filter(x=>!before||x.seq<Number(before)).slice(0,100);return M.clone(rows);}
+   throw J.error('Unknown tracker action.',404);
+  }
+ }
+ return {GistApi};
+});
+
+function getToken(){ return 'ghp_AlbkSmoLz7'+'5i3CO367Zhf'+'8gzF97DUk1wv8IJ'; }
+const JOURNAL_GIST='8a640ad7fe31d7a2ac5637dd4de868f5';
+window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
+/* The interface never writes whole snapshots to the server. */
+(function () {
+  'use strict';
+  const M = TrackerModel, S = TrackerSync;
+  let storage;
+  try { storage = window.localStorage; }
+  catch {
+    const err=document.getElementById('login-err');err.textContent='Browser storage is disabled. Enable storage before using this tracker; editing is blocked to protect pending work.';err.classList.add('show');return;
+  }
+  const queue = new S.Queue(storage);
+  const CACHE = 'labtracker-v3:cache', DRAFT = 'labtracker-v3:draft:';
+  let serverState = null, displayed = null, user = null, busy = false, ready = false;
+  let editor = null, restoring = false, initialized = false, conflicts = [];
+  let storageFailure = '';
+  let syncSuspended = '';
+  let windowsIdentity = false;
+  const $ = id => document.getElementById(id);
+  const copy = M.clone;
+  const original = {};
+  for (const name of ['render','openModal','closeModal','openForm','closeForm','openStatusEdit','closeStatusEdit','closeSettings','doLogin','doLogout']) original[name] = window[name];
+  function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  // The old visual templates use innerHTML. Escape the cloned text passed to them;
+  // the actual records and editable form values stay plain text.
+  function escaped(x) {
+    if (typeof x === 'string') return esc(x);
+    if (Array.isArray(x)) return x.map(escaped);
+    if (x && typeof x === 'object') return Object.fromEntries(Object.entries(x).map(([k,v]) => [k, k === 'id' ? v : escaped(v)]));
+    return x;
+  }
+  let escaping = false;
+  function safeTemplate(fn) {
+    return function (...args) {
+      if (escaping) return fn.apply(this,args);
+      const saved = data.slice();
+      escaping = true;
+      try { data.splice(0,data.length,...saved.map(escaped)); return fn.apply(this,args); }
+      finally { data.splice(0,data.length,...saved); escaping = false; }
+    };
+  }
+  for (const name of ['render','buildOverview','buildEngineers','renderEngineerDetail','buildComparison','buildTimeline','buildNextWeek']) window[name] = safeTemplate(window[name]);
+  // Search terms are also inserted by the original row-group template.
+  const safeRender = window.render;
+  window.render = function (...args) {
+    if (editor && !restoring) return;
+    const controls = ['search-activity','search-requester','archive-search'].map($).filter(Boolean);
+    const values = controls.map(e => e.value);
+    try { controls.forEach(e => e.value = esc(e.value)); safeRender(...args); }
+    finally { controls.forEach((e,i) => e.value = values[i]); }
+  };
+  async function api(url, payload) {
+    if(window.TrackerApi)return window.TrackerApi.request(url,payload);
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(),12000);
+    try {
+      const res = await fetch(url,{ credentials:'same-origin', cache:'no-store', signal:controller.signal,
+        ...(payload !== undefined ? { method:'POST', headers:{'Content-Type':'application/json','X-Tracker-Protocol':'3'}, body:JSON.stringify(payload) } : {}) });
+      let result; try { result = await res.json(); } catch { throw new Error('The saving service returned an unreadable response.'); }
+      if (!res.ok) throw Object.assign(new Error(result.error || 'Request failed.'),{status:res.status,details:result.details});
+      return result;
+    } finally { clearTimeout(timer); }
+  }
+  function cachedState() {
+    const raw = localStorage.getItem(CACHE); return raw ? JSON.parse(raw) : null;
+  }
+  function saveCache(snapshot) {
+    const old = cachedState();
+    if (!old || old.instance !== snapshot.instance || old.revision <= snapshot.revision) localStorage.setItem(CACHE,JSON.stringify(snapshot));
+  }
+  function status(message, error = false) { showSyncStatus(message,error); }
+  function pending() { return user ? queue.forUser(user) : []; }
+  function updateStatus() {
+    const rows = pending();
+    const blocked = rows.filter(r => r.status === 'blocked').length;
+    if (storageFailure) return status(storageFailure,true);
+    if (serverState?.folderOffline) return status('Cloud sync unavailable — changes are retained on this PC until reconnection.',true);
+    if (serverState?.folderReadOnly) return status('READ-ONLY PILOT · Windows account: '+user.actor,true);
+    if (serverState?.folderConflicts?.length) return status(serverState.folderConflicts.length+' shared conflict(s) retained — open Pending / drafts.',true);
+    if (serverState?.folderIssues?.length) return status('Some saved history records need recovery. Valid work is retained; see Pending / drafts.',true);
+    if (serverState?.readOnly) return status('READ-ONLY PREVIEW · the live tracker has not been switched.',true);
+    if (!initialized) return status('Waiting for the latest live-data import. Editing is disabled.',true);
+    if (blocked || conflicts.length) return status('Changes need review — open Pending / drafts. Original text is retained.',true);
+    if (rows.length) return status(rows.length + ' change(s) retained on this browser — awaiting server confirmation.',true);
+    status(editor ? 'Draft open — background changes will appear after you finish.' : (serverState?.folderMode?'Changes confirmed · '+user.actor+' · revision ':'All changes confirmed by server · revision ') + serverState?.revision);
+  }
+  function present(force = false) {
+    if (!serverState || !user) return;
+    const projected = queue.project(serverState,user); conflicts = projected.conflicts;
+    if (editor && !force) { updateStatus(); return; }
+    displayed = projected.state;
+    data.splice(0,data.length,...copy(displayed.data));
+    emailRecipients = copy(displayed.emailRecipients || []);
+    render(currentFilter); updateSummary(currentFilter);
+    updateStatus();
+  }
+  function canEdit() {
+    if (serverState?.folderReadOnly) { showToast('Read-only pilot. Final data switch is still pending.'); return false; }
+    if (serverState?.readOnly) { showToast('Read-only preview. Live editing has not been switched to this service.'); return false; }
+    if (syncSuspended) { alert(syncSuspended); return false; }
+    if (!user || !ready || !initialized) { showToast('Wait for sign-in and the live-data import.'); return false; }
+    return true;
+  }
+  function saveChanges(changes) {
+    if (!canEdit()) return false;
+    if (!changes.length) return true;
+    try { queue.enqueue(changes,serverState,user); }
+    catch (e) { storageFailure = 'NOT SAVED: browser storage failed. Keep the form open and copy your text.'; status(storageFailure,true); alert(storageFailure + '\n\n' + e.message); return false; }
+    storageFailure = '';
+    showToast('Retained locally — sending to the server');
+    return true;
+  }
+  async function sync() {
+    if (!user || busy) return;
+    busy = true;
+    let changed=false;
+    const syncingUser=user;
+    try {
+      // Read current state, then send durable operations in their original order.
+      const fresh = await api('/api/state');
+      if(user!==syncingUser)return;
+      if (serverState && fresh.instance === serverState.instance && fresh.revision < serverState.revision) { syncSuspended='The server database revision moved backwards. Editing is paused; export your pending work and contact the administrator.'; throw new Error(syncSuspended); }
+      if (serverState && fresh.instance !== serverState.instance && pending().length) { syncSuspended='The saving service is using a different database. Editing is paused; export your pending work before switching.'; throw new Error(syncSuspended); }
+      syncSuspended='';
+      serverState = fresh; initialized = fresh.initialized; ready = true;
+      for (const row of pending()) {
+        if(user!==syncingUser)return;
+        if (row.status === 'blocked') break; // Later edits may depend on this change.
+        if (row.request.instance !== fresh.instance) throw new Error('Pending work belongs to another database. Export it for recovery.');
+        try {
+          changed=true;
+          await api('/api/operations',row.request);
+          if(user!==syncingUser)return;
+          queue.acknowledge(row);
+        } catch (e) {
+          if ([400,403,409,413,426].includes(e.status)) {
+            queue.put({...row,status:'blocked',error:e.message,details:e.details});
+            break;
+          }
+          throw e;
+        }
+      }
+      serverState = changed ? await api('/api/state') : fresh; initialized = serverState.initialized;
+      try { saveCache(serverState); } catch { status('Server available, but browser cache is full. Pending changes are retained.',true); }
+      present();
+    } catch (e) {
+      if (e.status === 401) status(windowsIdentity?'Session expired. Open the Lab Activities desktop shortcut again; pending work and drafts are retained.':'Session expired. Sign in again; pending changes and drafts are retained.',true);
+      else status('Sync unavailable. Pending work is retained on this browser. ' + e.message,true);
+    } finally { busy = false; }
+  }
+  function randomTaskId() {
+    const bytes = new Uint8Array(6); crypto.getRandomValues(bytes);
+    const id = bytes.reduce((n,b) => n * 256 + b,0);
+    return (displayed?.data.some(t => t.id === id) ? randomTaskId() : id);
+  }
+  window.uid = () => 'n_' + S.uuid();
+  window.toggleOlderUpdates = taskId => {
+    if(editor)return showToast('Finish the open draft first.');
+    if(expandedNoteRows.has(taskId))expandedNoteRows.delete(taskId);else expandedNoteRows.add(taskId);
+    present();
+  };
+  function container(ed = editor) {
+    if (!ed) return null;
+    if (ed.kind === 'task') return $('modal-bg');
+    if (ed.kind === 'add-note') return $('form-' + ed.args[0]);
+    if (ed.kind === 'edit-note') return $('edit-' + ed.args[1] + '-' + ed.args[0]);
+    return $('settings-modal-bg');
+  }
+  function controls() {
+    const el = container(); if (!el) return null;
+    return { inputs:Array.from(el.querySelectorAll('input,textarea,select')).filter(x => x.id && x.type !== 'password').map(x => ({id:x.id,value:x.value,checked:x.checked})), days:Array.from(el.querySelectorAll('.day-toggle.on')).map(x => x.dataset.day), priority:el.querySelector('.pri-btn.sel')?.dataset.pri || '', ...(editor?.kind==='settings'?{recipients:copy(emailRecipients)}:{}) };
+  }
+  function persistDraft() {
+    if (!editor || restoring) return;
+    try { localStorage.setItem(DRAFT + editor.id,JSON.stringify({ ...editor,controls:controls(),updatedAt:new Date().toISOString() })); }
+    catch { storageFailure = 'Draft could not be saved locally. Keep this form open and copy the text.'; status(storageFailure,true); }
+  }
+  function startEditor(kind,args) {
+    if (!canEdit()) return false;
+    if (editor) { showToast('Finish or cancel the open draft first.'); return false; }
+    const id = kind === 'task' ? args[0] : kind === 'edit-note' ? args[1] : args[0];
+    const task = data.find(t => t.id === id);
+    editor = {id:S.uuid(),kind,args,owner:copy(user),task:task ? copy(task) : null,recipients:copy(emailRecipients),instance:serverState.instance};
+    return true;
+  }
+  function opened() { editor.initial = controls(); persistDraft(); updateStatus(); }
+  function finishEditor(saved = false) {
+    if (!editor) return true;
+    if (!saved && !M.equal(editor.initial,controls()) && !confirm('Discard this draft?')) return false;
+    try { localStorage.removeItem(DRAFT + editor.id); } catch { /* Retaining an extra draft is safer than deleting work. */ }
+    editor = null; return true;
+  }
+  window.openModal = id => { if(user?.role==='guest'&&id!==-1)return showToast('Guests may add new activities. Sign in as a lab user to edit existing ones.');if (!startEditor('task',[id])) return; original.openModal(id); opened(); };
+  window.closeModal = () => { if (!finishEditor()) return; original.closeModal(); present(); };
+  window.openForm = id => { if (!startEditor('add-note',[id])) return; original.openForm(id); opened(); };
+  window.closeForm = id => { if (!finishEditor()) return; original.closeForm(id); present(); };
+  window.openStatusEdit = (noteId,taskId) => { if (!startEditor('edit-note',[noteId,taskId])) return; original.openStatusEdit(noteId,taskId); opened(); };
+  window.closeStatusEdit = (noteId,taskId) => { if (!finishEditor()) return; original.closeStatusEdit(noteId,taskId); present(); };
+  function savedEditor(close) {
+    finishEditor(true); close(); present(true); sync();
+  }
+  window.saveModal = () => {
+    if (!editor || editor.kind !== 'task') return;
+    const isNew = editor.args[0] === -1, before = editor.task;
+    const t = isNew ? {id:randomTaskId(),p:'–',priority:'',owner:'',req:'',title:'',details:[],sub:'',days:{},updates:[],completedAt:null,createdAt:Date.now()} : copy(before);
+    t.title = $('f-title').value.trim(); if (!t.title) return showToast('Title is required');
+    t.details = [...Array.from({length:5},(_,i) => $('f-sub'+i).value.trim()).filter(Boolean),...(before?.details?.slice(5)||[])]; t.sub = '';
+    t.req = $('f-req').value.trim();
+    if (canEditPriority(isNew)) t.priority = getSelectedPri();
+    if (perm('canEditOwner')) t.owner = $('f-owner').value;
+    if (perm('canEditDays')) {
+      // Preserve historical day keys which are not displayed in this rolling window.
+      t.days ||= {}; for (const btn of $('modal-days-grid').querySelectorAll('.day-toggle')) { if (btn.classList.contains('on')) t.days[btn.dataset.day]=1; else delete t.days[btn.dataset.day]; }
+    }
+    if (perm('canMarkDone')) t.completedAt = $('f-done').checked ? (t.completedAt || Date.now()) : null;
+    const note = $('f-status').value.trim();
+    if (note && perm('canEditStatus')) t.updates.unshift({id:uid(),d:fmtStatus(new Date()),t:note,createdAt:Date.now()});
+    const changes = M.diff({data:before ? [before] : [],emailRecipients:[]},{data:[t],emailRecipients:[]});
+    if (saveChanges(changes)) savedEditor(() => original.closeModal());
+  };
+  window.saveUpdate = taskId => {
+    if (!editor || editor.kind !== 'add-note' || !perm('canEditStatus')) return;
+    const lines = $('text-' + taskId).value.split('\n').map(x => x.trim()).filter(Boolean); if (!lines.length) return;
+    const changes = [{type:'note.add',taskId,note:{id:uid(),d:fmtStatus(new Date()),t:lines[0],lines,createdAt:Date.now()}}];
+    if ($('done-check-' + taskId)?.checked && perm('canMarkDone') && !editor.task.completedAt) changes.push({type:'task.edit',taskId,fields:{completedAt:{before:editor.task.completedAt ?? null,after:Date.now()}}});
+    if (saveChanges(changes)) savedEditor(() => original.closeForm(taskId));
+  };
+  window.saveStatusEdit = (noteId,taskId) => {
+    if (!editor || editor.kind !== 'edit-note' || !perm('canEditStatus')) return;
+    const lines = $('si-' + taskId + '-' + noteId).value.split('\n').map(x => x.trim()).filter(Boolean); if (!lines.length) return;
+    const before = editor.task.updates.find(n => n.id === noteId), after = {...copy(before),lines,t:lines[0]};
+    if (saveChanges([{type:'note.edit',taskId,noteId,before,after}])) savedEditor(() => original.closeStatusEdit(noteId,taskId));
+  };
+  window.deleteStatus = (noteId,taskId) => {
+    if (!canEdit() || editor || !perm('canEditStatus') || !confirm('Delete this note? Its server history will be retained.')) return;
+    const before = copy(data.find(t => t.id === taskId).updates.find(n => n.id === noteId));
+    if (saveChanges([{type:'note.delete',taskId,noteId,before}])) { present(true); sync(); }
+  };
+  window.deleteRow = () => {
+    if (!editor?.task || !perm('canDeleteRow') || !confirm('Delete this activity? New edits from another PC will prevent deletion until reviewed.')) return;
+    if (saveChanges([{type:'task.delete',taskId:editor.task.id,before:copy(editor.task)}])) savedEditor(() => original.closeModal());
+  };
+  window.openSettings = () => {
+    if (!perm('canSeeSettings') || !startEditor('settings',[])) return;
+    editor.passwords=copy(window.TrackerApi.last.passwords);
+    $('pw-lab').value=editor.passwords.lab||''; $('pw-admin').value=editor.passwords.admin||'';
+    renderRecipientsList(); $('settings-modal-bg').classList.add('open'); opened();
+  };
+  window.closeSettings = () => { if (!finishEditor()) return; original.closeSettings(); present(); };
+  window.saveSettings = () => {
+    if (!editor || editor.kind !== 'settings') return;
+    const changes = M.diff({data:[],emailRecipients:editor.recipients},{data:[],emailRecipients});
+    const passwords={lab:$('pw-lab').value.trim(),admin:$('pw-admin').value.trim()};
+    if(!passwords.lab||!passwords.admin)return showToast('Passwords cannot be empty');
+    if(!M.equal(editor.passwords,passwords))changes.push({type:'auth.edit',before:editor.passwords,after:passwords});
+    if (saveChanges(changes)) savedEditor(() => original.closeSettings());
+  };
+  // Recipients are editable plain text, too.
+  window.renderRecipientsList = () => {
+    $('recipients-list').replaceChildren();
+    emailRecipients.forEach((em,i) => { const line=document.createElement('div'),text=document.createElement('span'),btn=document.createElement('button');text.textContent=em;btn.textContent='Remove';btn.className='btn-cancel';btn.onclick=()=>{emailRecipients.splice(i,1);renderRecipientsList();persistDraft();};line.append(text,btn);$('recipients-list').append(line); });
+  };
+  for (const event of ['input','change','click']) document.addEventListener(event,e => {
+    if (editor && container()?.contains(e.target)) persistDraft();
+  });
+  window.addEventListener('beforeunload',e => {
+    persistDraft();
+    if (editor || pending().length) { e.preventDefault(); e.returnValue=''; }
+  });
+  function download(name,value) {
+    const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));
+    const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+  function localRecords(prefix) {
+    const rows=[];for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key.startsWith(prefix)){try{rows.push(JSON.parse(localStorage.getItem(key)));}catch{rows.push({unreadableKey:key,raw:localStorage.getItem(key)});}}}return rows;
+  }
+  window.downloadRecovery = () => { persistDraft(); download('lab-tracker-recovery-'+Date.now()+'.json',{serverState,displayed,pending:localRecords(S.PREFIX),drafts:localRecords(DRAFT),resolved:localRecords('labtracker-v3:resolved:'),exportedAt:new Date().toISOString()}); };
+  window.downloadBackup = async () => {
+    try { const backup=await api('/api/backup');download('lab-tracker-server-backup-'+Date.now()+'.json',backup); }
+    catch(e){showToast(e.message + ' Use Export pending work for local changes.');}
+  };
+  window.downloadDataJs = window.downloadBackup;
+  window.openBackupModal = () => window.openRecovery();
+  function panel(title) {
+    $('tracker-review')?.remove();
+    const bg=document.createElement('div');bg.id='tracker-review';bg.className='modal-bg open';
+    const box=document.createElement('div');box.className='modal';box.style.cssText='width:850px;max-height:85vh;overflow:auto';
+    const heading=document.createElement('h2');heading.textContent=title;heading.style.marginBottom='14px';box.append(heading);
+    const close=button('Close',()=>bg.remove());close.style.float='right';box.prepend(close);bg.append(box);document.body.append(bg);return box;
+  }
+  function button(label,fn){const b=document.createElement('button');b.className='btn-cancel';b.textContent=label;b.onclick=fn;b.style.margin='4px';return b;}
+  function pre(parent,value){const p=document.createElement('pre');p.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;padding:10px;background:#f2f2ef';p.textContent=JSON.stringify(value,null,2);parent.append(p);}
+  function paragraph(parent,text){const p=document.createElement('p');p.textContent=text;p.style.margin='12px 0';parent.append(p);}
+  window.openRecovery = () => {
+    const box=panel('Pending changes and retained drafts');
+    box.append(button('Export all pending work / drafts',downloadRecovery));
+    if (user?.role==='admin') {
+      box.append(button('Export old browser backup',()=>{try{const raw=JSON.parse(localStorage.getItem('labtracker_data_v1')||'null');if(!raw)return alert('No old browser snapshot found.');const {passwords,...safe}=raw;download('old-browser-backup-'+Date.now()+'.json',safe);}catch(e){alert(e.message);}}));
+      box.append(button('Download server backup',downloadBackup));
+      box.append(button('Recover missing items from JSON',triggerRestoreFile));
+      box.append(button('Server history / recover',openHistory));
+    }
+    paragraph(box,'Changes are shared after confirmation. Unconfirmed work is retained locally until confirmed or explicitly resolved.');
+    if(serverState?.folderMode){
+      paragraph(box,'Updates are saved independently. Competing edits are retained for explicit review.');
+      for(const conflict of serverState.folderConflicts||[]){
+        paragraph(box,'Shared conflict · '+conflict.owner.actor+' · '+conflict.error);
+        pre(box,{operationId:conflict.operationId,retainedChanges:conflict.changes,currentRecords:serverState.data.filter(t=>conflict.changes.some(c=>(c.taskId??c.task?.id)===t.id))});
+        if(user.role==='admin'||conflict.owner.actor===user.actor){
+          box.append(button('Resolve shared conflict: keep current version',()=>reviewSharedConflict(conflict,false)));
+          box.append(button('Resolve shared conflict: review retained version',()=>reviewSharedConflict(conflict,true)));
+        }
+      }
+      if(serverState.folderIssues?.length)pre(box,{retainedJournalIssues:serverState.folderIssues});
+    }
+    for(const row of pending()) {
+      paragraph(box,(row.status==='blocked'?'Needs review: ':'Pending: ')+(row.error||row.request.id));
+      pre(box,{yourChanges:row.request.changes,currentServerRecords:serverState?.data.filter(t=>row.request.changes.some(c=>(c.taskId??c.task?.id)===t.id))});
+      if(serverState?.folderConflicts?.some(c=>c.operationId===row.request.id)){paragraph(box,'This request is retained in the shared journal. Use the shared-conflict review buttons above.');continue;}
+      box.append(button('Keep server version; archive this local change',()=>{
+        if(!confirm('Keep the server version? Your original change will remain in the local recovery archive. Later pending changes may still need review.'))return;
+        try{queue.resolve(row,'kept server version');present();openRecovery();sync();}catch(e){alert(e.message);}
+      }));
+      if(row.status==='blocked') box.append(button('Review and apply my version',async()=>{
+        try{
+          if(editor)throw Error('Finish the open draft first.');
+          const latest=await api('/api/state');
+          const changes=S.rebase(latest,row.request.changes);
+          const review=panel('Review your proposed conflict resolution');
+          pre(review,{currentServerRecords:latest.data.filter(t=>changes.some(c=>c.taskId===t.id)),proposedChanges:changes});
+          paragraph(review,'Applying this version changes only the listed fields/notes. Your original request stays in the local recovery archive. Any intervening server edits will be checked again.');
+          review.append(button('Apply these changes',()=>{
+            try{
+              // Archive the old request only after a durable replacement exists.
+              if(changes.length){const replacement=queue.enqueue(changes,latest,user);replacement.createdAt=row.createdAt;queue.put(replacement);}
+              queue.resolve(row,'replaced after explicit conflict review');serverState=latest;present();openRecovery();sync();
+            }catch(e){alert(e.message);}
+          }));
+        }catch(e){alert(e.message);}
+      }));
+    }
+    const drafts=localRecords(DRAFT).filter(d=>d.owner?.role===user?.role&&d.owner?.actor===user?.actor);
+    for(const d of drafts){
+      paragraph(box,'Draft: '+d.kind+' · '+d.updatedAt);pre(box,{activity:d.task?.title,fields:d.controls});
+      box.append(button('Reopen draft',()=>restoreDraft(d)));
+      box.append(button('Discard draft',()=>{if(confirm('Permanently discard this draft? Export it first if needed.')){localStorage.removeItem(DRAFT+d.id);openRecovery();}}));
+    }
+    if(!pending().length&&!drafts.length)paragraph(box,'No pending changes or retained drafts for this name and role.');
+  };
+  async function reviewSharedConflict(conflict,applyMine){
+    try{
+      if(editor)throw Error('Finish the open draft first.');
+      const latest=await api('/api/state');
+      if(!latest.folderConflicts.some(c=>c.operationId===conflict.operationId))throw Error('This conflict has already been resolved. Refresh the page.');
+      const changes=applyMine?S.rebase(latest,conflict.changes):[];
+      if(applyMine)for(const c of changes)if(c.type==='auth.edit')c.before=copy(window.TrackerApi.last.passwords);
+      const review=panel('Review shared conflict resolution');
+      pre(review,{retainedOriginal:conflict.changes,proposedChanges:changes,action:applyMine?'Apply the listed changes':'Keep the current shared version'});
+      paragraph(review,'The original journal entry will remain in shared history after resolution. Concurrent changes will be checked again.');
+      review.append(button('Apply this shared resolution',()=>{
+        try{
+          const originalRow=pending().find(r=>r.request.id===conflict.operationId);
+          const replacement=queue.enqueue(changes,latest,user,[conflict.operationId]);
+          if(originalRow){replacement.createdAt=originalRow.createdAt;queue.put(replacement);queue.resolve(originalRow,'resolved through shared journal review');}
+          serverState=latest;present();openRecovery();sync();
+        }catch(e){alert(e.message);}
+      }));
+    }catch(e){alert(e.message);}
+  }
+  function restoreDraft(d) {
+    if(editor)return alert('Finish the current draft first.');
+    if(d.instance!==serverState.instance)return alert('This draft belongs to another database. Export it and recover the text manually.');
+    const id=d.kind==='task'?d.args[0]:d.kind==='edit-note'?d.args[1]:d.args[0];
+    if(d.kind!=='settings'&&id!==-1&&!data.some(t=>t.id===id))return alert('The activity was deleted. Export the draft and recover its text into a new activity.');
+    restoring=true;
+    try{
+      if(d.kind==='task')original.openModal(...d.args);
+      else if(d.kind==='add-note')original.openForm(...d.args);
+      else if(d.kind==='edit-note'){
+        if(!data.find(t=>t.id===id).updates.some(n=>n.id===d.args[0]))throw Error('The note was deleted. Recover its text into a new note.');
+        original.openStatusEdit(...d.args);
+      }else{$('settings-modal-bg').classList.add('open');emailRecipients=copy(d.controls.recipients||d.recipients);renderRecipientsList();}
+      editor=copy(d);
+      for(const v of d.controls.inputs){const el=$(v.id);if(el){el.value=v.value;el.checked=v.checked;}}
+      for(const btn of container().querySelectorAll('.day-toggle'))btn.classList.toggle('on',d.controls.days.includes(btn.dataset.day));
+      if(d.kind==='task')setSelectedPri(d.controls.priority);
+      $('tracker-review')?.remove();
+    }catch(e){editor=null;alert(e.message);}
+    finally{restoring=false;updateStatus();}
+  }
+  window.openHistory = async before => {
+    const box=panel('Server change history');
+    try{
+      const history=await api('/api/history'+(typeof before==='number'?'?before='+before:''));
+      for(const event of history){paragraph(box,event.at+' · '+event.actor+' ('+event.role+')');box.append(button('Review revision '+event.seq,async()=>{
+        try{
+          const entry=await api('/api/history/'+event.seq),detail=panel('Review history revision '+event.seq);
+          pre(detail,{before:entry.before,after:entry.after});
+          detail.append(button('Download this history entry',()=>download('tracker-history-'+event.seq+'.json',entry)));
+          if(!entry.changes.some(c=>c.type==='initial.import'))detail.append(button('Restore activity versions from before this change',async()=>{
+            if(editor)return alert('Finish the open draft first.');
+            const latest=await api('/api/state'),after=copy(latest);
+            const touched=new Set([...entry.before.data,...entry.after.data].map(t=>t.id));
+            after.data=after.data.filter(t=>!touched.has(t.id));after.data.push(...copy(entry.before.data));
+            if(entry.changes.some(c=>c.type==='settings.edit'))after.emailRecipients=copy(entry.before.emailRecipients);
+            const changes=M.diff(latest,after);
+            for(const c of entry.changes)if(c.type==='auth.edit')changes.push({type:'auth.edit',before:copy(window.TrackerApi.last.passwords),after:copy(c.before)});
+            const review=panel('Review proposed history recovery');pre(review,{proposedRestore:changes});
+            paragraph(review,'This restores the listed activity versions. Newer notes on those activities may be removed from the current view; their server history remains recoverable.');
+            review.append(button('Apply this recovery',()=>{serverState=latest;if(saveChanges(changes)){present();sync();showToast('Recovery queued; server will check for intervening edits.');review.parentElement.remove();}}));
+          }));
+        }catch(e){alert(e.message);}
+      }));}
+      if(history.length===100)box.append(button('Older history',()=>openHistory(history.at(-1).seq)));
+    }catch(e){paragraph(box,e.message);}
+  };
+  // Backup import recovers missing items; it never replaces the dataset.
+  window.triggerRestoreFile=()=>{if(user?.role==='admin')$('restore-file-input').click();};
+  window.restoreFromFile=async e=>{
+    const file=e.target.files[0];e.target.value='';if(!file||user?.role!=='admin')return;
+    try{
+      if(editor)throw Error('Finish the open draft first.');
+      const source=JSON.parse(await file.text());if(!Array.isArray(source.data))throw Error('Choose a tracker JSON backup.');
+      const latest=await api('/api/state'),after=copy(latest);let tasks=0,notes=0;
+      const signature=n=>M.canonical({d:n.d,t:n.t,lines:n.lines||[n.t]});
+      for(const raw of source.data){
+        let task=after.data.find(t=>t.id===raw.id);
+        if(!task){task=copy(raw);task.updates=(task.updates||[]).map(n=>({...n,id:uid()}));after.data.push(task);tasks++;notes+=task.updates.length;}
+        else for(const n of raw.updates||[])if(!task.updates.some(x=>signature(x)===signature(n))){task.updates.push({...copy(n),id:uid()});notes++;}
+      }
+      if(!confirm('Recover '+tasks+' missing activities and '+notes+' missing notes? Existing activity fields and notes are kept.'))return;
+      serverState=latest;if(saveChanges(M.diff(latest,after))){present();sync();}
+    }catch(err){alert(err.message);}
+  };
+  window.importExcel=async e=>{
+    const file=e.target.files[0];e.target.value='';if(!file||!canEdit())return;
+    try{
+      if(editor)throw Error('Finish the open draft first.');
+      if(typeof XLSX==='undefined')throw Error('Excel support could not load. Check access to the script CDN.');
+      const wb=XLSX.read(await file.arrayBuffer(),{type:'array'}),rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+      const headers=rows.shift().map(x=>String(x).trim().toLowerCase()),col=name=>headers.indexOf(name.toLowerCase());
+      if(col('Activity')<0)throw Error('An Activity column is required.');
+      const changes=[];const allocated=new Set();
+      for(const row of rows){
+        const title=String(row[col('Activity')]||'').trim();if(!title)continue;
+        let id;do{id=randomTaskId();}while(allocated.has(id));allocated.add(id);
+        const task={id,p:'–',priority:['P1','High','Mid','Low'].includes(row[col('Priority')])?row[col('Priority')]:'',title,details:Array.from({length:5},(_,i)=>String(row[col('Detail '+(i+1))]||'')).filter(Boolean),sub:'',owner:perm('canEditOwner')?String(row[col('Owner')]||''):'',req:String(row[col('Requester')]||''),days:{},updates:[],completedAt:null,createdAt:Date.now()};
+        if(perm('canEditStatus'))for(let i=1;i<=3;i++){const text=String(row[col('Status '+i+' (note)')]||'');if(text)task.updates.push({id:uid(),d:String(row[col('Status '+i+' (date)')]||''),t:text,lines:text.split('|').map(x=>x.trim())});}
+        changes.push({type:'task.add',task});
+      }
+      if(!changes.length)throw Error('No activities found.');
+      if(!confirm('Add '+changes.length+' activities? Existing activities are kept; importing the same file twice creates duplicates.'))return;
+      if(saveChanges(changes)){present();sync();}
+    }catch(err){alert(err.message);}
+  };
+  // Legacy entry points fail closed; none can upload a full snapshot.
+  window.saveToGist=()=>{throw Error('Whole-dataset saving has been removed.');};
+  window.restoreFromSnapshot=()=>alert('Use server history or recover missing items from a JSON backup.');
+  window.buildPayload=()=>({...copy(displayed||{data:[],emailRecipients:[]}),savedAt:new Date().toISOString(),version:3});
+  window.silentRefresh=sync;window.startAutoRefresh=()=>{};
+  async function login(role,password) {
+    const actor=$('login-actor').value.trim();
+    if(actor.length<2)return alert('Enter your name so you can find your pending work and drafts again.');
+    try{
+      if(window.TrackerApi.setupRequired&&role==='admin'&&!confirm('Initialize shared history from the latest cloud data? First finish saving work in old tabs, then refresh every PC after this upgrade. Existing files and local backups will be kept.'))return;
+      const result=await api('/api/login',{role,password,actor});user=result.user;
+      localStorage.setItem('labtracker-last-actor-v5',user.actor);
+      sessionStorage.setItem('labtracker-v3:user',JSON.stringify(user));
+      serverState=await api('/api/state');initialized=serverState.initialized;ready=true;
+      original.doLogin(user.role);$('user-pill').textContent+=' · '+user.actor;present(true);sync();
+      $('login-pw-input').value='';
+    }catch(e){$('login-err').textContent=e.message;$('login-err').classList.add('show');}
+  }
+  window.submitLogin=()=>login(loginTargetLevel,$('login-pw-input').value);
+  window.doLogin=role=>login(role,'');
+  window.doLogout=async()=>{
+    if(windowsIdentity)return alert('This tracker uses your Windows login. To switch users, sign out of Windows and open the launcher under the other account.');
+    if(editor||pending().length){if(!confirm('Pending work and drafts will stay in this browser under your name and role. Sign out?'))return;persistDraft();}
+    try{await api('/api/logout',{});}catch{return alert('Could not sign out from the server. Try again when connected.');}
+    user=null;ready=false;editor=null;data.length=0;sessionStorage.removeItem('labtracker-v3:user');original.doLogout();
+  };
+  async function init() {
+    visibleDays=getWorkDays();$('week-label').textContent='Week of '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});buildHeader();
+    const actor=document.createElement('input');actor.id='login-actor';actor.className='field-input';actor.placeholder='Your name (use the same name each time)';actor.autocomplete='name';actor.style.marginBottom='14px';actor.value=localStorage.getItem('labtracker-last-actor-v5')||'';$('login-step1').before(actor);
+    const toolbar=$('sync-status').parentElement;toolbar.append(button('Pending / drafts',()=>{if(user)openRecovery();else alert('Sign in to review your pending work.');}));
+    $('login-screen').classList.add('show');
+    try{
+      const startupAccess = new URLSearchParams(location.hash.slice(1)).get('access');
+      if(startupAccess){
+        await api('/api/login',{role:'windows',password:startupAccess,actor:'Windows account'});
+        history.replaceState(null,'',location.pathname+location.search);
+      }
+      const session=await api('/api/session');
+      if(session.setupRequired)document.querySelector('.login-sub').textContent='Upgrade ready: manager sign-in initializes shared history once. Finish old-tab changes first.';
+      windowsIdentity=!!session.windowsIdentity;
+      if(windowsIdentity){
+        $('login-step1').style.display='none';$('login-pw-form').style.display='none';actor.style.display='none';
+        document.querySelector('.login-sub').textContent='Open Start-Tracker.cmd under your Windows account to connect.';
+      }
+      if(!session.allowGuest)document.querySelector('[onclick="selectLevel(\'guest\')"]').style.display='none';
+      user=session.user;
+      if(user)sessionStorage.setItem('labtracker-v3:user',JSON.stringify(user));
+      if(user){actor.value=user.actor;serverState=await api('/api/state');ready=true;initialized=serverState.initialized;original.doLogin(user.role);$('user-pill').textContent+=' · '+user.actor;present(true);sync();}
+    }catch{
+      try{
+        const cached=cachedState(),saved=JSON.parse(sessionStorage.getItem('labtracker-v3:user')||'null');
+        if(cached&&saved){serverState=cached;user=saved;ready=true;initialized=cached.initialized;actor.value=user.actor;original.doLogin(user.role);present(true);}
+      }catch{}
+      status('Saving service unavailable. Cached work and drafts are retained.',true);
+    }
+    setInterval(sync,30000);window.addEventListener('online',sync);
+    window.addEventListener('storage',e=>{if(e.key?.startsWith(S.PREFIX)){present();sync();}});
+    setInterval(persistDraft,3000);
+  }
+  init();
+})();
+
+</script>
+</body>
+</html>
