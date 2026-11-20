@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Weekly Activity Tracker</title>
 <meta name="lab-tracker-protocol" content="gist-journal-v1">
-<script src="hub-entry.js?v=activities-entry-1"></script>
+<script src="hub-entry.js?v=viewer-add-1"></script>
 <script src="gist-connection.js?v=activities-entry-1"></script>
-<script defer src="saving-ui.js?v=activities-entry-1"></script>
+<script defer src="saving-ui.js?v=viewer-add-1"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -231,6 +231,7 @@ html[data-process-lab-entry] #login-actor { display:none !important; }
 html[data-process-lab-entry] #hub-entry-status { display:block; }
 body.activities-viewer .edit-row-btn,
 body.activities-viewer #import-activities-btn { display:none !important; }
+.activities-guest .edit-row-btn,.activities-guest #import-activities-btn{display:none!important}
 /* Login screen */
 .login-screen { display:none; position:fixed; inset:0; background:var(--bg); z-index:500; align-items:center; justify-content:center; flex-direction:column; gap:24px; }
 .login-screen.show { display:flex; }
@@ -2086,6 +2087,7 @@ function applyPermissionsToUI() {
   // User pill
   const pill = document.getElementById('user-pill');
   document.body.classList.toggle('activities-viewer', currentUser === 'viewer');
+  document.body.classList.toggle('activities-guest', currentUser === 'guest');
   const labels = { viewer:'Viewer', guest:'Guest', lab:'Lab Practical Engineer', admin:'Manager' };
   const cls = { guest:'user-guest', lab:'user-lab', admin:'user-admin' };
   pill.textContent = labels[currentUser] || '';
@@ -2553,7 +2555,7 @@ function showSyncStatus(msg, isError){
  class GistApi{
   constructor({gistId,getToken,fetch:fetcher=globalThis.fetch.bind(globalThis),storage=globalThis.sessionStorage}){if(!/^[a-f0-9]{20,40}$/.test(gistId))throw Error('Invalid Gist configuration.');this.base='https://api.github.com/gists/'+gistId;this.getToken=getToken;this.fetch=fetcher;this.storage=storage;this.cache=new Map();this.cooldown=0;this.owner=null;this.last=null;this.sessionKey='labtracker-gist-session-v5';this.busy=null;}
   async call(method,path='',value){
-   if(Date.now()<this.cooldown)throw J.error('GitHub asked us to wait. Pending changes remain on this browser.',503);
+   if(Date.now()<this.cooldown&&!this.getToken())throw J.error('GitHub asked us to wait. Pending changes remain on this browser.',503);
    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
    try{
     const token=this.getToken();if(!token&&method!=='GET')throw J.error('Connect saving to publish your pending changes. They are retained on this browser.',503);
@@ -3151,6 +3153,15 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
     try{await api('/api/logout',{});}catch{return alert('Could not sign out from the server. Try again when connected.');}
     user=null;ready=false;editor=null;data.length=0;sessionStorage.removeItem('labtracker-v3:user');original.doLogout();
   };
+  async function enterFromHub(actor) {
+        const result=await window.TrackerApi.loginFromHub();user=result.user;actor.value=user.actor;
+        serverState=await api('/api/state');ready=true;initialized=serverState.initialized;
+        original.doLogin(user.role);
+        $('user-pill').textContent=result.entry.name+' · '+({viewer:'Viewer',editor:'Editor',manager:'Manager',admin:'Administrator'}[result.entry.level]);
+        $('user-pill').title=result.entry.email+(result.entry.level==='viewer'?' · View and add unassigned activities; no assignment or scheduling.':'');
+        const back=$('process-lab-back')||document.createElement('a');back.id='process-lab-back';back.href=ActivitiesHubEntry.HUB;back.className='btn-cancel';back.textContent='← Process Lab';document.querySelector('.header-left').append(back);
+        present(true);sync();
+  }
   async function init() {
     visibleDays=getWorkDays();$('week-label').textContent='Week of '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});buildHeader();
     const actor=document.createElement('input');actor.id='login-actor';actor.className='field-input';actor.placeholder='Your name (use the same name each time)';actor.autocomplete='name';actor.style.marginBottom='14px';actor.value=localStorage.getItem('labtracker-last-actor-v5')||'';$('login-step1').before(actor);
@@ -3158,13 +3169,7 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
     $('login-screen').classList.add('show');
     try{
       if(document.documentElement.dataset.processLabEntry){
-        const result=await window.TrackerApi.loginFromHub();user=result.user;actor.value=user.actor;
-        serverState=await api('/api/state');ready=true;initialized=serverState.initialized;
-        original.doLogin(user.role);
-        $('user-pill').textContent=result.entry.name+' · '+({viewer:'Viewer',editor:'Editor',manager:'Manager',admin:'Administrator'}[result.entry.level]);
-        $('user-pill').title=result.entry.email;
-        const back=document.createElement('a');back.id='process-lab-back';back.href=ActivitiesHubEntry.HUB;back.className='btn-cancel';back.textContent='← Process Lab';document.querySelector('.header-left').append(back);
-        present(true);sync();
+        await enterFromHub(actor);
       }else{
       const startupAccess = new URLSearchParams(location.hash.slice(1)).get('access');
       if(startupAccess){
@@ -3188,15 +3193,20 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
         user=null;ready=false;currentUser=null;
         $('login-screen').classList.add('show');
         $('hub-entry-message').textContent='Could not enter Activities. '+error.message;
-        return;
-      }
+      }else{
       try{
         const cached=cachedState(),saved=JSON.parse(sessionStorage.getItem('labtracker-v3:user')||'null');
         if(cached&&saved){serverState=cached;user=saved;ready=true;initialized=cached.initialized;actor.value=user.actor;original.doLogin(user.role);present(true);}
       }catch{}
       status('Saving service unavailable. Cached work and drafts are retained.',true);
+      }
     }
-    window.addEventListener('activities-saving-changed',sync);
+    window.addEventListener('activities-saving-changed',async()=>{
+      if(!user&&document.documentElement.dataset.processLabEntry&&activitySaving.isConnected()){
+        $('hub-entry-message').textContent='Checking your current access and loading live activities…';
+        try{await enterFromHub(actor);}catch(error){user=null;ready=false;currentUser=null;$('hub-entry-message').textContent='Could not enter Activities. '+error.message;}
+      }else sync();
+    });
     setInterval(()=>{if(activitySaving.isConnected()||Date.now()-lastSyncAt>=300000)sync();},30000);window.addEventListener('online',sync);
     window.addEventListener('storage',e=>{if(e.key?.startsWith(S.PREFIX)){present();sync();}});
     setInterval(persistDraft,3000);

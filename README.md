@@ -6,7 +6,7 @@ Opening Activities from [Process Lab](https://yousefmahajna.github.io/interconne
 
 | Process Lab access | Activities behavior |
 | --- | --- |
-| Viewer | Read-only activity and archive views; no add, edit, import, or settings access |
+| Viewer | Existing Guest role: view and add unassigned activities; no owner, scheduling, existing-activity editing or settings access |
 | Editor | Existing Lab Practical Engineer editing permissions |
 | Manager / Administrator | Existing manager permissions |
 | No access / failed permission lookup | Blocked entry with Retry and a link back to Process Lab |
@@ -28,3 +28,9 @@ The previously embedded credential must be revoked by the repository owner in [G
 ## Checks
 
 Run `node --test tests/*.test.cjs`. Tests use synthetic data and mock all writes. A separate Playwright integration check validates regular entry, the actual hub link, all role mappings, failed lookups, Viewer edit guards, role-separated pending work and connected saving without writing to the live Gist.
+
+## Viewer permissions and quota recovery
+
+A Process Lab Viewer maps to the existing Guest role. New activities must be unassigned and unscheduled, with no completion date or status notes. Existing activities cannot be edited or deleted. Editor and Manager roles keep their existing permissions. The role badge still says Viewer for hub entry.
+
+Permission lookups can read the same public main-branch policy file when the GitHub API quota is exhausted. If live journal reads are also rate-limited, the Gist owner can use Connect saving (owner) on the entry screen. A successful connection retries hub entry without reloading or changing the selected user’s role. No new public Activities copy, snapshot job or embedded credential is included in this change.
