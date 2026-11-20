@@ -17,13 +17,13 @@ async function adapter(entry){
 }
 test('regular URLs retain legacy entry without permission lookups',async()=>{const result=await Entry.load('https://example.com/',()=>assert.fail('unexpected request'));assert.equal(result.mode,'legacy');});
 test('central Viewer, Editor and Manager/Admin roles map to Activities roles',()=>{
- for(const [email,role] of [['unknown@nvidia.com','viewer'],['editor@nvidia.com','lab'],['manager@nvidia.com','admin'],[Policy.OWNER,'admin']])assert.equal(Entry.fromData(email,cfg,Policy).role,role);
+ for(const [email,role] of [['unknown@nvidia.com','guest'],['editor@nvidia.com','lab'],['manager@nvidia.com','admin'],[Policy.OWNER,'admin']])assert.equal(Entry.fromData(email,cfg,Policy).role,role);
  assert.throws(()=>Entry.fromData('blocked@nvidia.com',cfg,Policy),/No Lab Activities access/);
  assert.throws(()=>Entry.fromData('other@example.com',cfg,Policy),/valid NVIDIA email/);
 });
 test('fresh permissions determine role, ignoring URL role and name',async()=>{
  const result=await Entry.load(href('unknown@nvidia.com')+'&role=admin&name=Fake',async(url,options)=>{assert.equal(options.cache,'no-store');return {ok:true,json:async()=>({encoding:'base64',content:Buffer.from(JSON.stringify(cfg)).toString('base64')})};},async()=>Policy);
- assert.equal(result.role,'viewer');assert.equal(result.name,'unknown@nvidia.com');
+ assert.equal(result.role,'guest');assert.equal(result.name,'unknown@nvidia.com');
  await assert.rejects(()=>Entry.load(href('editor@nvidia.com'),async()=>({ok:false}),async()=>Policy),/current Process Lab permissions/);
  assert.throws(()=>Entry.parse(href('editor@nvidia.com')+'&email=other@nvidia.com'),/select your NVIDIA email/);
 });
@@ -48,3 +48,33 @@ test('regular password checks remain and disconnected writes do not reach GitHub
  assert.equal((await api.login({role:'lab',password:'test-lab',actor:'Direct User'})).user.role,'lab');
  await assert.rejects(()=>api.call('POST','/comments',{body:'test'}),/Connect saving/);assert.ok(calls.every(c=>c.options.method==='GET'));
 });
+
+const Hub=Entry,url=href,data=()=>structuredClone(cfg);
+
+test('an exhausted anonymous API quota reads the same public main-branch file', async () => {
+  const calls=[];
+  const result=await Hub.load(url('unknown@nvidia.com')+'&role=admin',async(href,options)=>{
+    calls.push({href,options});
+    if(calls.length===1)return {ok:false,status:403,headers:{get:()=> '0'}};
+    assert.ok(href.startsWith('https://raw.githubusercontent.com/YousefMahajna/interconnect-process-lab/main/platforms.json?_='));
+    assert.equal(options.cache,'no-store');assert.equal(options.redirect,'error');
+    return {ok:true,json:async()=>data()};
+  },async()=>Policy);
+  assert.equal(result.role,'guest');assert.equal(calls.length,2);
+});
+
+test('rate-limit fallback still blocks denied users and unavailable sources', async () => {
+  for(const denied of [false,true]){
+    let calls=0;
+    await assert.rejects(Hub.load(url('blocked@nvidia.com'),async()=>{
+      if(++calls===1)return {ok:false,status:403,headers:{get:()=> '0'}};
+      const d=data();d.access.push({name:'Blocked',email:'blocked@nvidia.com',platform:'activities',level:'none'});
+      return {ok:denied,json:async()=>d};
+    },async()=>Policy),e=>e.code===(denied?'NO_ACCESS':'UNAVAILABLE'));
+  }
+  let calls=0;
+  await assert.rejects(Hub.load(url('unknown@nvidia.com'),async()=>{calls++;return {ok:false,status:403,headers:{get:()=> '1'}};},async()=>Policy),/current Process Lab permissions/);
+  assert.equal(calls,1);
+});
+
+test('Activities Viewer can add only unassigned, unscheduled activities',()=>{const ctx=runtime(),J=ctx.TrackerJournal,user={role:'guest',actor:'Viewer <viewer@nvidia.com>'};const task={id:2,title:'New request',owner:'',days:{},updates:[],completedAt:null};const request={owner:user,changes:[{type:'task.add',task}]};assert.doesNotThrow(()=>J.authorize(request,user));for(const fields of [{owner:'Amir'},{days:{'2026-11-22':1}},{completedAt:123},{updates:[{id:'test'}]}])assert.throws(()=>J.authorize({owner:user,changes:[{type:'task.add',task:{...task,...fields}}]},user),/unassigned/);for(const type of ['task.edit','task.delete','note.add'])assert.throws(()=>J.authorize({owner:user,changes:[{type,taskId:1}]},user),/add new activities only/);});

@@ -15,9 +15,10 @@
     const cancel=document.createElement('button');cancel.type='button';cancel.className='btn-cancel';cancel.textContent='Cancel';
     actions.append(connect,cancel);dialog.append(title,help,label,input,error,actions);document.body.append(dialog);
     document.querySelector('.header-left').append(action,note);
+    const loginConnect=document.createElement('button');loginConnect.id='login-connect-saving';loginConnect.className='btn-cancel';loginConnect.type='button';loginConnect.textContent='Connect saving (owner)';loginConnect.style.marginTop='16px';document.querySelector('.login-card').append(loginConnect);loginConnect.onclick=()=>action.onclick();
     function refresh(){
       const canSave=!document.getElementById('login-screen').classList.contains('show')&&!document.body.classList.contains('activities-viewer');
-      action.hidden=!canSave;note.hidden=!canSave;
+      action.hidden=!canSave;note.hidden=!canSave;loginConnect.hidden=!document.getElementById('login-screen').classList.contains('show');
       const connected=activitySaving.isConnected();action.textContent=connected?'Disconnect saving':'Connect saving';
       note.textContent=connected?'Saving connected':'Drafts kept on this browser';
     }

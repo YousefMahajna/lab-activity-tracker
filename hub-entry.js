@@ -19,7 +19,7 @@
     if (['viewer', 'editor', 'manager', 'admin'].indexOf(level) === -1) throw failure('An unsupported access level was returned. Please contact the Process Lab administrator.', 'INVALID_CONFIG');
     var row = data.access.find(function (r) { return policy.normalize(r.email) === email; });
     var name = policy.isOwner(email) ? policy.ownerRow().name : row && row.name ? String(row.name) : email;
-    return { mode: 'hub', email: email, name: name, role: level === 'viewer' ? 'viewer' : level === 'editor' ? 'lab' : 'admin', level: level };
+    return { mode: 'hub', email: email, name: name, role: level === 'viewer' ? 'guest' : level === 'editor' ? 'lab' : 'admin', level: level };
   }
   function loadPolicy() {
     if (root.LabAccess) return Promise.resolve(root.LabAccess);
@@ -39,7 +39,14 @@
     var policy = await (getPolicy || loadPolicy)();
     if (!policy.validEmail(entry.email)) throw failure('Return to Process Lab and select a valid NVIDIA email.', 'INVALID_EMAIL');
     var response = await fetcher(CONFIG, { cache: 'no-store', redirect: 'error', headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(15000) });
-    if (!response.ok) throw failure('Could not load current Process Lab permissions. Check your connection and try again.', 'UNAVAILABLE');
+    if (!response.ok) {
+      var limited = (response.status === 403 || response.status === 429) && response.headers && response.headers.get('x-ratelimit-remaining') === '0';
+      if (limited) {
+        var raw = await fetcher('https://raw.githubusercontent.com/YousefMahajna/interconnect-process-lab/main/platforms.json?_=' + Date.now(), { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(15000) });
+        if (raw.ok) return fromData(entry.email, await raw.json(), policy);
+      }
+      throw failure('Could not load current Process Lab permissions. Check your connection and try again.', 'UNAVAILABLE');
+    }
     var file = await response.json();
     if (file.encoding !== 'base64' || typeof file.content !== 'string' || file.content.length > 262144) throw failure('The Process Lab permissions file could not be read.', 'INVALID_CONFIG');
     var binary = atob(file.content.replace(/\s/g, ''));
