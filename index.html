@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Weekly Activity Tracker</title>
 <meta name="lab-tracker-protocol" content="gist-journal-v1">
+<script src="hub-entry.js?v=activities-entry-1"></script>
+<script src="gist-connection.js?v=activities-entry-1"></script>
+<script defer src="saving-ui.js?v=activities-entry-1"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -221,6 +224,13 @@ td.c-day { text-align:center; }
 .an-empty { text-align:center; padding:32px; color:var(--text-3); font-size:13px; }
 .an-two-col { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
 @media(max-width:700px){ .an-two-col{ grid-template-columns:1fr; } }
+html[data-process-lab-entry] #login-step1,
+html[data-process-lab-entry] #login-pw-form,
+html[data-process-lab-entry] #login-actor { display:none !important; }
+#hub-entry-status { display:none; }
+html[data-process-lab-entry] #hub-entry-status { display:block; }
+body.activities-viewer .edit-row-btn,
+body.activities-viewer #import-activities-btn { display:none !important; }
 /* Login screen */
 .login-screen { display:none; position:fixed; inset:0; background:var(--bg); z-index:500; align-items:center; justify-content:center; flex-direction:column; gap:24px; }
 .login-screen.show { display:flex; }
@@ -262,6 +272,13 @@ td.c-day { text-align:center; }
   <div class="login-card">
     <div class="login-logo">🔬 Process Lab</div>
     <div class="login-sub">Activity Tracker · NVIDIA</div>
+    <div id="hub-entry-status" role="status">
+      <p id="hub-entry-message">Checking your Process Lab access…</p>
+      <div style="display:flex;gap:14px;margin-top:16px">
+        <a href="https://yousefmahajna.github.io/interconnect-process-lab/">← Process Lab</a>
+        <button type="button" class="btn-cancel" onclick="location.reload()">Retry</button>
+      </div>
+    </div>
     <div id="login-step1" class="login-level-grid">
       <button class="login-level-btn" onclick="selectLevel('guest')">
         <span>Enter as Guest</span><span class="lbl">View &amp; add tasks only</span>
@@ -389,7 +406,7 @@ td.c-day { text-align:center; }
       Show archive
     </button>
     <div class="sep"></div>
-    <button class="action-btn" onclick="document.getElementById('import-input').click()">
+    <button class="action-btn" id="import-activities-btn" onclick="document.getElementById('import-input').click()">
       <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v2h10v-2M7 2v7M4 6l3 3 3-3"/></svg>
       Import Excel
     </button>
@@ -624,7 +641,7 @@ td.c-day { text-align:center; }
 // Show login screen IMMEDIATELY — before any other JS runs
 // This guarantees the page never appears blank even if everything else fails
 document.addEventListener('DOMContentLoaded', function(){
-  try { document.getElementById('login-screen').classList.add('show'); } catch(e){}
+  try { if(!currentUser)document.getElementById('login-screen').classList.add('show'); } catch(e){}
 });
 // Also try right now in case DOM is already ready
 try { document.getElementById('login-screen').classList.add('show'); } catch(e){}
@@ -1975,6 +1992,7 @@ let loginTargetLevel = null;
 
 
 const PERMS = {
+  viewer: { canSeeArchive: true },
   guest: {
     canAddRow: true,
     canEditPriorityOnNew: true,   // can set P when adding new task
@@ -2067,7 +2085,8 @@ function applyPermissionsToUI() {
   const p = PERMS[currentUser] || {};
   // User pill
   const pill = document.getElementById('user-pill');
-  const labels = { guest:'Guest', lab:'Lab Practical Engineer', admin:'Manager' };
+  document.body.classList.toggle('activities-viewer', currentUser === 'viewer');
+  const labels = { viewer:'Viewer', guest:'Guest', lab:'Lab Practical Engineer', admin:'Manager' };
   const cls = { guest:'user-guest', lab:'user-lab', admin:'user-admin' };
   pill.textContent = labels[currentUser] || '';
   pill.className = 'user-pill ' + (cls[currentUser]||'user-guest');
@@ -2494,6 +2513,7 @@ function showSyncStatus(msg, isError){
   }
  }
  function authorize(r,user){
+  if(user?.role==='viewer')throw error('Viewer access is read-only.',403);
   if(!user||r.owner.actor!==user.actor||r.owner.role!==user.role)throw error('Sign in with the original name and role for this pending change.',403);
   for(const c of r.changes){if(user.role==='admin')continue;if(user.role==='guest'&&c.type!=='task.add')throw error('Guest users may add new activities only.',403);if(['settings.edit','auth.edit','task.delete'].includes(c.type))throw error('Manager permission required.',403);if(c.type==='task.edit'&&Object.keys(c.fields).some(k=>!['title','details','sub','req','completedAt'].includes(k)))throw error('Manager permission required for this field.',403);if(c.type==='task.add'&&(c.task.owner||Object.keys(c.task.days).length||c.task.completedAt||(user.role==='guest'&&c.task.updates.length)))throw error('New activities must be unassigned.',403);}
  }
@@ -2536,9 +2556,9 @@ function showSyncStatus(msg, isError){
    if(Date.now()<this.cooldown)throw J.error('GitHub asked us to wait. Pending changes remain on this browser.',503);
    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
    try{
-    const token=this.getToken();if(!token)throw J.error('The tracker’s existing GitHub connection is unavailable. Pending changes are retained.',401);
-    const res=await this.fetch(this.base+path,{method,headers:{Accept:'application/vnd.github+json',Authorization:'Bearer '+token,...(value!==undefined?{'Content-Type':'application/json'}:{})},...(value!==undefined?{body:JSON.stringify(value)}:{}),cache:'no-store',signal:controller.signal});
-    if(!res.ok){let b={};try{b=await res.json();}catch{}const retry=res.headers.get('retry-after');if(res.status===429||(res.status===403&&(retry||/rate limit|abuse/i.test(b.message||'')))){this.cooldown=Date.now()+Math.max(60,Number(retry)||60)*1000;throw J.error('GitHub rate limit reached. Changes stay queued and will retry after the required pause.',503);}throw J.error('GitHub HTTP '+res.status+': '+String(b.message||'request rejected').slice(0,200),res.status);}
+    const token=this.getToken();if(!token&&method!=='GET')throw J.error('Connect saving to publish your pending changes. They are retained on this browser.',503);
+    const res=await this.fetch(this.base+path,{method,headers:{Accept:'application/vnd.github+json',...(token?{Authorization:'Bearer '+token}:{}),...(value!==undefined?{'Content-Type':'application/json'}:{})},...(value!==undefined?{body:JSON.stringify(value)}:{}),cache:'no-store',signal:controller.signal});
+    if(!res.ok){let b={};try{b=await res.json();}catch{}const retry=res.headers.get('retry-after');if(res.status===429||(res.status===403&&(retry||/rate limit|abuse/i.test(b.message||'')))){this.cooldown=Date.now()+Math.max(60,Number(retry)||60)*1000;throw J.error('GitHub rate limit reached. Changes stay queued and will retry after the required pause.',503);}if(token&&[401,403,404].includes(res.status)){activitySaving.disconnect();window.dispatchEvent(new Event('activities-saving-disconnected'));throw J.error('Saving connection expired or was denied. Connect saving again; pending changes are retained.',503);}throw J.error('GitHub HTTP '+res.status+': '+String(b.message||'request rejected').slice(0,200),res.status);}
     return await res.json();
    }finally{clearTimeout(timer);}
   }
@@ -2577,8 +2597,17 @@ function showSyncStatus(msg, isError){
    this.last=result;return result;
   }
   stored(){try{return JSON.parse(this.storage.getItem(this.sessionKey)||'null');}catch{return null;}}
-  async user(result){const stored=this.stored();if(!stored||stored.expires<Date.now())return null;const expected=result.passwords?.[stored.user.role];if(stored.user.role!=='guest'&&stored.passwordHash!==await J.hash(expected||''))return null;return stored.user;}
+  async loginFromHub(){
+   this.hubMode=true;this.hubUser=null;
+   const entry=await ActivitiesHubEntry.load(location.href,fetch.bind(globalThis));
+   if(entry.mode!=='hub')throw J.error('Return to Process Lab and choose your email.',401);
+   await this.read();
+   this.hubUser={role:entry.role,actor:entry.name+' <'+entry.email+'>',email:entry.email};
+   return {user:this.hubUser,entry};
+  }
+  async user(result){if(this.hubMode)return this.hubUser;const stored=this.stored();if(!stored||stored.expires<Date.now())return null;const expected=result.passwords?.[stored.user.role];if(stored.user.role!=='guest'&&stored.passwordHash!==await J.hash(expected||''))return null;return stored.user;}
   async login({role,password,actor}){
+   if(this.hubMode||document.documentElement.dataset.processLabEntry)throw J.error('Return to Process Lab to change your email or access.',403);
    if(!['guest','lab','admin'].includes(role)||typeof actor!=='string'||actor.trim().length<2||actor.trim().length>100)throw J.error('Enter your name and choose a valid role.',401);
    let result;try{result=await this.read();}catch(e){
     if(e.status!==428)throw e;
@@ -2599,6 +2628,7 @@ function showSyncStatus(msg, isError){
   async write(request){
    const before=await this.read(),user=await this.user(before);if(!user)throw J.error('Sign in again; pending changes are retained.',401);
    if(before.state.readOnly)throw J.error('A journal integrity issue needs recovery. Pending work is retained.',409);
+   if(user.role==='viewer')throw J.error('Viewer access is read-only.',403);
    J.validateRequest(request);J.authorize(request,user);
    if(request.instance!==before.baseline.instance)throw J.error('This work belongs to another tracker instance. Export it for recovery.',409);
    const old=before.groups.get(request.id);
@@ -2616,7 +2646,7 @@ function showSyncStatus(msg, isError){
   }
   async request(url,payload){
    if(url==='/api/login')return this.login(payload);
-   if(url==='/api/logout'){this.storage.removeItem(this.sessionKey);return {ok:true};}
+   if(url==='/api/logout'){this.hubUser=null;this.storage.removeItem(this.sessionKey);return {ok:true};}
    let result;try{result=await this.read();}catch(e){if(url==='/api/session'&&e.status===428)return {user:null,allowGuest:false,setupRequired:true,protocol:5};throw e;}const user=await this.user(result);
    if(url==='/api/session')return {user,allowGuest:true,protocol:5};
    if(!user)throw J.error('Sign in again. Your pending work and drafts are retained.',401);
@@ -2632,7 +2662,8 @@ function showSyncStatus(msg, isError){
  return {GistApi};
 });
 
-function getToken(){ return 'ghp_AlbkSmoLz7'+'5i3CO367Zhf'+'8gzF97DUk1wv8IJ'; }
+const activitySaving=ActivityGistConnection.create('8a640ad7fe31d7a2ac5637dd4de868f5',fetch.bind(globalThis));
+function getToken(){ return activitySaving.getToken(); }
 const JOURNAL_GIST='8a640ad7fe31d7a2ac5637dd4de868f5';
 window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
 /* The interface never writes whole snapshots to the server. */
@@ -2650,7 +2681,7 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
   let editor = null, restoring = false, initialized = false, conflicts = [];
   let storageFailure = '';
   let syncSuspended = '';
-  let windowsIdentity = false;
+  let windowsIdentity = false, lastSyncAt = 0;
   const $ = id => document.getElementById(id);
   const copy = M.clone;
   const original = {};
@@ -2715,6 +2746,8 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
     if (serverState?.readOnly) return status('READ-ONLY PREVIEW · the live tracker has not been switched.',true);
     if (!initialized) return status('Waiting for the latest live-data import. Editing is disabled.',true);
     if (blocked || conflicts.length) return status('Changes need review — open Pending / drafts. Original text is retained.',true);
+    if (rows.length && !activitySaving.isConnected()) return status(rows.length + ' change(s) kept on this browser — Connect saving to publish.',true);
+    if (user?.role==='viewer') return status('Viewer · read-only · revision '+serverState?.revision);
     if (rows.length) return status(rows.length + ' change(s) retained on this browser — awaiting server confirmation.',true);
     status(editor ? 'Draft open — background changes will appear after you finish.' : (serverState?.folderMode?'Changes confirmed · '+user.actor+' · revision ':'All changes confirmed by server · revision ') + serverState?.revision);
   }
@@ -2729,6 +2762,7 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
     updateStatus();
   }
   function canEdit() {
+    if(user?.role==='viewer'){showToast('Viewer access is read-only.');return false;}
     if (serverState?.folderReadOnly) { showToast('Read-only pilot. Final data switch is still pending.'); return false; }
     if (serverState?.readOnly) { showToast('Read-only preview. Live editing has not been switched to this service.'); return false; }
     if (syncSuspended) { alert(syncSuspended); return false; }
@@ -2746,6 +2780,7 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
   }
   async function sync() {
     if (!user || busy) return;
+    lastSyncAt=Date.now();
     busy = true;
     let changed=false;
     const syncingUser=user;
@@ -2757,7 +2792,7 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
       if (serverState && fresh.instance !== serverState.instance && pending().length) { syncSuspended='The saving service is using a different database. Editing is paused; export your pending work before switching.'; throw new Error(syncSuspended); }
       syncSuspended='';
       serverState = fresh; initialized = fresh.initialized; ready = true;
-      for (const row of pending()) {
+      for (const row of (user.role==='viewer'||!activitySaving.isConnected()?[]:pending())) {
         if(user!==syncingUser)return;
         if (row.status === 'blocked') break; // Later edits may depend on this change.
         if (row.request.instance !== fresh.instance) throw new Error('Pending work belongs to another database. Export it for recovery.');
@@ -2940,7 +2975,7 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
       for(const conflict of serverState.folderConflicts||[]){
         paragraph(box,'Shared conflict · '+conflict.owner.actor+' · '+conflict.error);
         pre(box,{operationId:conflict.operationId,retainedChanges:conflict.changes,currentRecords:serverState.data.filter(t=>conflict.changes.some(c=>(c.taskId??c.task?.id)===t.id))});
-        if(user.role==='admin'||conflict.owner.actor===user.actor){
+        if(user.role!=='viewer'&&(user.role==='admin'||conflict.owner.actor===user.actor)){
           box.append(button('Resolve shared conflict: keep current version',()=>reviewSharedConflict(conflict,false)));
           box.append(button('Resolve shared conflict: review retained version',()=>reviewSharedConflict(conflict,true)));
         }
@@ -2982,6 +3017,7 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
     if(!pending().length&&!drafts.length)paragraph(box,'No pending changes or retained drafts for this name and role.');
   };
   async function reviewSharedConflict(conflict,applyMine){
+    if(!canEdit())return;
     try{
       if(editor)throw Error('Finish the open draft first.');
       const latest=await api('/api/state');
@@ -3002,6 +3038,7 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
     }catch(e){alert(e.message);}
   }
   function restoreDraft(d) {
+    if(!canEdit())return;
     if(editor)return alert('Finish the current draft first.');
     if(d.instance!==serverState.instance)return alert('This draft belongs to another database. Export it and recover the text manually.');
     const id=d.kind==='task'?d.args[0]:d.kind==='edit-note'?d.args[1]:d.args[0];
@@ -3108,6 +3145,7 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
   window.submitLogin=()=>login(loginTargetLevel,$('login-pw-input').value);
   window.doLogin=role=>login(role,'');
   window.doLogout=async()=>{
+    if(document.documentElement.dataset.processLabEntry){location.href=ActivitiesHubEntry.HUB;return;}
     if(windowsIdentity)return alert('This tracker uses your Windows login. To switch users, sign out of Windows and open the launcher under the other account.');
     if(editor||pending().length){if(!confirm('Pending work and drafts will stay in this browser under your name and role. Sign out?'))return;persistDraft();}
     try{await api('/api/logout',{});}catch{return alert('Could not sign out from the server. Try again when connected.');}
@@ -3119,6 +3157,15 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
     const toolbar=$('sync-status').parentElement;toolbar.append(button('Pending / drafts',()=>{if(user)openRecovery();else alert('Sign in to review your pending work.');}));
     $('login-screen').classList.add('show');
     try{
+      if(document.documentElement.dataset.processLabEntry){
+        const result=await window.TrackerApi.loginFromHub();user=result.user;actor.value=user.actor;
+        serverState=await api('/api/state');ready=true;initialized=serverState.initialized;
+        original.doLogin(user.role);
+        $('user-pill').textContent=result.entry.name+' · '+({viewer:'Viewer',editor:'Editor',manager:'Manager',admin:'Administrator'}[result.entry.level]);
+        $('user-pill').title=result.entry.email;
+        const back=document.createElement('a');back.id='process-lab-back';back.href=ActivitiesHubEntry.HUB;back.className='btn-cancel';back.textContent='← Process Lab';document.querySelector('.header-left').append(back);
+        present(true);sync();
+      }else{
       const startupAccess = new URLSearchParams(location.hash.slice(1)).get('access');
       if(startupAccess){
         await api('/api/login',{role:'windows',password:startupAccess,actor:'Windows account'});
@@ -3135,14 +3182,22 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
       user=session.user;
       if(user)sessionStorage.setItem('labtracker-v3:user',JSON.stringify(user));
       if(user){actor.value=user.actor;serverState=await api('/api/state');ready=true;initialized=serverState.initialized;original.doLogin(user.role);$('user-pill').textContent+=' · '+user.actor;present(true);sync();}
-    }catch{
+      }
+    }catch(error){
+      if(document.documentElement.dataset.processLabEntry){
+        user=null;ready=false;currentUser=null;
+        $('login-screen').classList.add('show');
+        $('hub-entry-message').textContent='Could not enter Activities. '+error.message;
+        return;
+      }
       try{
         const cached=cachedState(),saved=JSON.parse(sessionStorage.getItem('labtracker-v3:user')||'null');
         if(cached&&saved){serverState=cached;user=saved;ready=true;initialized=cached.initialized;actor.value=user.actor;original.doLogin(user.role);present(true);}
       }catch{}
       status('Saving service unavailable. Cached work and drafts are retained.',true);
     }
-    setInterval(sync,30000);window.addEventListener('online',sync);
+    window.addEventListener('activities-saving-changed',sync);
+    setInterval(()=>{if(activitySaving.isConnected()||Date.now()-lastSyncAt>=300000)sync();},30000);window.addEventListener('online',sync);
     window.addEventListener('storage',e=>{if(e.key?.startsWith(S.PREFIX)){present();sync();}});
     setInterval(persistDraft,3000);
   }
