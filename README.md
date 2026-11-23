@@ -1,36 +1,29 @@
-# Process Lab Activities
+# Process Lab Activities — Firebase shared journal
 
-The regular [Activities link](https://yousefmahajna.github.io/lab-activity-tracker/) keeps its name and Guest / Lab Practical Engineer / Process Lab Manager entry screen, including the existing password checks. Existing regular-link sessions still work.
+Normal sign-in and synchronization use Firebase, not the GitHub API. Standalone users choose Viewer, Editor or Manager/Owner and verify their NVIDIA email with the same separate lab-app account used by Adhesives. A selected role cannot exceed the saved user grant. An owner may use a lower role to recover work made under that role. Process Lab entry uses the selected email only as a handoff; it must match the verified account, and role grants come from the owner-controlled Firebase permission mirror.
 
-Opening Activities from [Process Lab](https://yousefmahajna.github.io/interconnect-process-lab/) passes only the selected email in the URL fragment. Activities reads the current shared `platforms.json` and `access-policy.js` from the hub. It ignores names and roles supplied in the URL and does not reuse a legacy session or offline role if permissions cannot be read.
+## Owner activation
 
-| Process Lab access | Activities behavior |
-| --- | --- |
-| Viewer | Existing Guest role: view and add unassigned activities; no owner, scheduling, existing-activity editing or settings access |
-| Editor | Existing Lab Practical Engineer editing permissions |
-| Manager / Administrator | Existing manager permissions |
-| No access / failed permission lookup | Blocked entry with Retry and a link back to Process Lab |
+Open `shared-setup.html`. Publish its updated `firebase-database-rules.json` in the existing lab-tracker-nvidia Realtime Database, sign in as verified ymahajna@nvidia.com, preview the latest GitHub journal, close old Activities tabs, and initialize. Source reads are complete and hash-verified. If that one-time read is rate-limited, wait for the reset or enter an owner GitHub token on this setup page. It remains only in page memory and is cleared after successful initialization or leaving the page. No source writes are made.
 
-General NVIDIA access uses the shared policy, currently Viewer for Activities. Permission changes apply when the application reloads. Hub entry adds the person's name, permission level and a back link. Drafts and pending changes keep their original name/email and role, so an Editor draft is not projected into a later Viewer session.
+Initialization is a conditional null-only write to `activitiesJournalV1`. It preserves the tracker instance, activity/note IDs, current data, recipients, revision, history, operation hashes and retained conflicts. No replacement of existing Firebase inventory or GitHub journal occurs. The latest confirmed source was read during implementation: 96 activities, 97 notes, revision 3, no conflicts; always inspect the current preview before activating. Once initialized, reload every old Activities tab so it stops using GitHub. Close old tabs before initialization to avoid later Gist-only changes.
 
-The hub currently selects an email without verifying ownership. These are client-side presentation rules, not NVIDIA SSO or server-side authorization. The old direct-link password flow is retained as requested.
+The updated rules remove the public read grant at the database root and keep explicit existing read access at appState, processRecipeLibrary, adhesiveAccessV1 and adhesivesSharedV1. The new Activities journal requires verified NVIDIA identity and a current allowed grant. Do not restore a global `.read:true` or `.write:true`, because parent grants bypass child restrictions. Existing Activities appState and Recipe Library writes are otherwise unchanged.
 
-## Shared saving
+## Authorization and storage
 
-The live journal and existing data are preserved. Reads use the public GitHub Gist anonymously until an explicit saving connection is established. Anonymous background reads run at most once every five minutes; connected polling retains the existing 30-second interval.
+`activitiesAccessV1` is an owner-written mirror of the saved Process Lab Users list. The hub synchronizes it after Users saves; failed mirror updates are reported. Shared setup has a Sync Activities permissions retry. Unknown NVIDIA users use the configured general level. Revocation is checked by server rules on every operation and by clients on refresh.
 
-The page contains no GitHub credential. **Connect saving** accepts a GitHub token belonging to the shared Gist owner with Gists: Read and write permission. The credential is held only in this tab's memory and is never put in browser storage, URLs or source. The input clears after connection attempts and cancellation. Other users' personal GitHub accounts cannot publish to an owner-owned Gist.
+Operations are append-only, bound to verified UID/email and an allowed role. Native operation types and field names are visible to server rules. Viewers (Guest role) may add only unassigned, unscheduled activities without status notes. Editors keep existing permitted activity/note edits, but assignment, scheduling, deletion and settings require Manager/Owner. Managers can resolve retained conflicts; an author can resolve their own new Firebase operations. Imported historical conflicts require manager recovery. Entries cannot be overwritten or deleted by normal clients.
 
-Disconnected edits remain in the existing durable operation queue and draft storage. Connecting saving sends those operations using the existing append-only journal and conflict checks. Failed saves keep pending work and do not claim confirmation. Viewer sessions cannot send changes even if older editor work exists in the browser. Regular Guest users retain their existing ability to add tasks; publishing those additions requires a saving connection.
+JSON strings preserve nulls and empty arrays in before/after values. Protected new-task fields are stored separately and overwrite opaque values during decoding. Every reader validates decoded requests before applying them. Malformed records remain retained for owner review and are excluded from the state; a write is acknowledged only after its operation was actually processed. Concurrent stale edits retain a conflict rather than silently overwrite a field.
 
-The previously embedded credential must be revoked by the repository owner in [GitHub token settings](https://github.com/settings/tokens). Removing it from current source does not invalidate copies in repository history or old HTML backups.
+The migration creates a private checkpoint and keeps prior operation hashes for safe retries of already confirmed work. Old role passwords are not copied; password-only history is redacted, while original records stay in the unchanged Gist. Old unconfirmed password-setting requests are retained and require explicit review because verified accounts replace shared passwords.
 
-## Checks
+## Browser work and recovery
 
-Run `node --test tests/*.test.cjs`. Tests use synthetic data and mock all writes. A separate Playwright integration check validates regular entry, the actual hub link, all role mappings, failed lookups, Viewer edit guards, role-separated pending work and connected saving without writing to the live Gist.
+The original durable operation queue, draft keys and browser cache are preserved. Standalone role/name choices retain their previous actor identity so matching pending work can be retried under the same role. Hub actors keep the existing Name <email> identity. Work under a different actor/role is never silently reassigned. Download browser recovery is available on the entry screen; Pending / drafts retains the existing export and conflict review tools. Local work is cleared only after confirmed operation processing or an explicit archived resolution. A newer confirmed local revision blocks editing against an older migrated database.
 
-## Viewer permissions and quota recovery
+## Validation
 
-A Process Lab Viewer maps to the existing Guest role. New activities must be unassigned and unscheduled, with no completion date or status notes. Existing activities cannot be edited or deleted. Editor and Manager roles keep their existing permissions. The role badge still says Viewer for hub entry.
-
-Permission lookups can read the same public main-branch policy file when the GitHub API quota is exhausted. If live journal reads are also rate-limited, the Gist owner can use Connect saving (owner) on the entry screen. A successful connection retries hub entry without reloading or changing the selected user’s role. No new public Activities copy, snapshot job or embedded credential is included in this change.
+Run `node --test tests/*.test.cjs` on Node 24. Tests cover migration preservation, no legacy password copy, native codec, concurrent conflict retention, Viewer grants, idempotent retry, legacy replay, and rule predicates, plus retained legacy entry contracts. The rule tests evaluate authorization/validation expressions; Firebase Console validates the actual provider syntax during publishing. Workspace browser checks mock all writes and prove both standalone roles and hub access, denied elevation, cross-browser refresh, a complete migration setup and zero normal GitHub API requests. No production activity data is written by tests or deployment. There is no public activity snapshot or snapshot workflow.

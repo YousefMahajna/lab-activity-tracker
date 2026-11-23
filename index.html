@@ -4,10 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Weekly Activity Tracker</title>
-<meta name="lab-tracker-protocol" content="gist-journal-v1">
+<meta name="lab-tracker-protocol" content="firebase-journal-v1"><meta name="lab-tracker-build" content="23.11.26a">
 <script src="hub-entry.js?v=viewer-add-1"></script>
 <script src="gist-connection.js?v=activities-entry-1"></script>
-<script defer src="saving-ui.js?v=viewer-add-1"></script>
+<script src="firebase-config.js?v=23.11.26a"></script>
+<script src="firebase-auth.js?v=23.11.26a"></script>
+<script src="firebase-signin.js?v=23.11.26a"></script>
+<script src="activities-access.js?v=23.11.26a"></script>
+<script src="firebase-codec.js?v=23.11.26a"></script>
+<script src="firebase-api.js?v=23.11.26a"></script>
+<script defer src="firebase-saving-ui.js?v=23.11.26a"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -272,7 +278,7 @@ body.activities-viewer #import-activities-btn { display:none !important; }
 <div class="login-screen" id="login-screen">
   <div class="login-card">
     <div class="login-logo">🔬 Process Lab</div>
-    <div class="login-sub">Activity Tracker · NVIDIA</div>
+    <div class="login-sub">Activity Tracker · NVIDIA · Rev 23.11.26a</div>
     <div id="hub-entry-status" role="status">
       <p id="hub-entry-message">Checking your Process Lab access…</p>
       <div style="display:flex;gap:14px;margin-top:16px">
@@ -280,20 +286,20 @@ body.activities-viewer #import-activities-btn { display:none !important; }
         <button type="button" class="btn-cancel" onclick="location.reload()">Retry</button>
       </div>
     </div>
+    <div class="login-err" id="login-err" role="alert" style="margin-bottom:12px"></div>
     <div id="login-step1" class="login-level-grid">
       <button class="login-level-btn" onclick="selectLevel('guest')">
-        <span>Enter as Guest</span><span class="lbl">View &amp; add tasks only</span>
+        <span>Viewer</span><span class="lbl">View &amp; add unassigned activities</span>
       </button>
       <button class="login-level-btn" onclick="selectLevel('lab')">
-        <span>Lab Practical Engineer</span><span class="lbl">Password required</span>
+        <span>Editor</span><span class="lbl">Verified NVIDIA sign-in</span>
       </button>
       <button class="login-level-btn" onclick="selectLevel('admin')">
-        <span>Process Lab Manager</span><span class="lbl">Password required</span>
+        <span>Manager / Owner</span><span class="lbl">Verified NVIDIA sign-in</span>
       </button>
     </div>
     <div class="login-pw-form" id="login-pw-form">
       <input class="login-pw-input" id="login-pw-input" type="password" placeholder="Enter password…" onkeydown="if(event.key==='Enter')submitLogin()">
-      <div class="login-err" id="login-err">Incorrect password. Try again.</div>
       <div style="display:flex;gap:8px;">
         <button class="btn-cancel" onclick="backToLevels()">Back</button>
         <button class="btn-save" style="flex:1" onclick="submitLogin()">Enter</button>
@@ -2664,10 +2670,10 @@ function showSyncStatus(msg, isError){
  return {GistApi};
 });
 
-const activitySaving=ActivityGistConnection.create('8a640ad7fe31d7a2ac5637dd4de868f5',fetch.bind(globalThis));
+const activitySaving={getToken:()=>null,isConnected:()=>!!window.TrackerApi?.connected,disconnect:()=>LabFirebaseAuth.signOut()};
 function getToken(){ return activitySaving.getToken(); }
 const JOURNAL_GIST='8a640ad7fe31d7a2ac5637dd4de868f5';
-window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
+window.TrackerApi=ActivitiesFirebaseApi.create({databaseURL:LabFirebaseConfig.databaseURL,auth:LabFirebaseAuth,access:ActivitiesFirebaseAccess,storage:sessionStorage,signIn:LabFirebaseSignIn.open,loadHub:async()=>{const entry=ActivitiesHubEntry.parse(location.href);if(!entry||!/^([^@\s]+)@nvidia\.com$/i.test(entry.email))throw Error('Return to Process Lab and select a valid NVIDIA email.');return {mode:'hub',email:entry.email};}});
 /* The interface never writes whole snapshots to the server. */
 (function () {
   'use strict';
@@ -2718,7 +2724,7 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
     finally { controls.forEach((e,i) => e.value = values[i]); }
   };
   async function api(url, payload) {
-    if(window.TrackerApi)return window.TrackerApi.request(url,payload);
+    if(window.TrackerApi){const value=await window.TrackerApi.request(url,payload);if(url==='/api/state'){const cached=cachedState();if(cached&&cached.instance===value.instance&&cached.revision>value.revision)throw new Error('This browser has a newer confirmed revision than the migrated database. Editing is paused. Download browser recovery and contact the owner before continuing.');}return value;}
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(),12000);
     try {
       const res = await fetch(url,{ credentials:'same-origin', cache:'no-store', signal:controller.signal,
@@ -2748,7 +2754,7 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
     if (serverState?.readOnly) return status('READ-ONLY PREVIEW · the live tracker has not been switched.',true);
     if (!initialized) return status('Waiting for the latest live-data import. Editing is disabled.',true);
     if (blocked || conflicts.length) return status('Changes need review — open Pending / drafts. Original text is retained.',true);
-    if (rows.length && !activitySaving.isConnected()) return status(rows.length + ' change(s) kept on this browser — Connect saving to publish.',true);
+    if (rows.length && !activitySaving.isConnected()) return status(rows.length + ' change(s) retained — verify sign-in to retry saving.',true);
     if (user?.role==='viewer') return status('Viewer · read-only · revision '+serverState?.revision);
     if (rows.length) return status(rows.length + ' change(s) retained on this browser — awaiting server confirmation.',true);
     status(editor ? 'Draft open — background changes will appear after you finish.' : (serverState?.folderMode?'Changes confirmed · '+user.actor+' · revision ':'All changes confirmed by server · revision ') + serverState?.revision);
@@ -2815,7 +2821,7 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
       try { saveCache(serverState); } catch { status('Server available, but browser cache is full. Pending changes are retained.',true); }
       present();
     } catch (e) {
-      if (e.status === 401) status(windowsIdentity?'Session expired. Open the Lab Activities desktop shortcut again; pending work and drafts are retained.':'Session expired. Sign in again; pending changes and drafts are retained.',true);
+      if (e.status === 401) { ready=false;status('Session or access changed. Sign in again; pending changes and drafts are retained.',true); }
       else status('Sync unavailable. Pending work is retained on this browser. ' + e.message,true);
     } finally { busy = false; }
   }
@@ -2913,17 +2919,14 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
   };
   window.openSettings = () => {
     if (!perm('canSeeSettings') || !startEditor('settings',[])) return;
-    editor.passwords=copy(window.TrackerApi.last.passwords);
-    $('pw-lab').value=editor.passwords.lab||''; $('pw-admin').value=editor.passwords.admin||'';
+    editor.passwords={};
     renderRecipientsList(); $('settings-modal-bg').classList.add('open'); opened();
   };
   window.closeSettings = () => { if (!finishEditor()) return; original.closeSettings(); present(); };
   window.saveSettings = () => {
     if (!editor || editor.kind !== 'settings') return;
     const changes = M.diff({data:[],emailRecipients:editor.recipients},{data:[],emailRecipients});
-    const passwords={lab:$('pw-lab').value.trim(),admin:$('pw-admin').value.trim()};
-    if(!passwords.lab||!passwords.admin)return showToast('Passwords cannot be empty');
-    if(!M.equal(editor.passwords,passwords))changes.push({type:'auth.edit',before:editor.passwords,after:passwords});
+    // Verified NVIDIA account permissions replace shared role passwords.
     if (saveChanges(changes)) savedEditor(() => original.closeSettings());
   };
   // Recipients are editable plain text, too.
@@ -3144,7 +3147,8 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
       $('login-pw-input').value='';
     }catch(e){$('login-err').textContent=e.message;$('login-err').classList.add('show');}
   }
-  window.submitLogin=()=>login(loginTargetLevel,$('login-pw-input').value);
+  window.selectLevel=role=>{loginTargetLevel=role;login(role,'');};
+  window.submitLogin=()=>login(loginTargetLevel,'');
   window.doLogin=role=>login(role,'');
   window.doLogout=async()=>{
     if(document.documentElement.dataset.processLabEntry){location.href=ActivitiesHubEntry.HUB;return;}
@@ -3164,6 +3168,7 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
   }
   async function init() {
     visibleDays=getWorkDays();$('week-label').textContent='Week of '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});buildHeader();
+    $('pw-lab').closest('.field-group').hidden=true;
     const actor=document.createElement('input');actor.id='login-actor';actor.className='field-input';actor.placeholder='Your name (use the same name each time)';actor.autocomplete='name';actor.style.marginBottom='14px';actor.value=localStorage.getItem('labtracker-last-actor-v5')||'';$('login-step1').before(actor);
     const toolbar=$('sync-status').parentElement;toolbar.append(button('Pending / drafts',()=>{if(user)openRecovery();else alert('Sign in to review your pending work.');}));
     $('login-screen').classList.add('show');
@@ -3194,20 +3199,17 @@ window.TrackerApi=new TrackerGistApi.GistApi({gistId:JOURNAL_GIST,getToken});
         $('login-screen').classList.add('show');
         $('hub-entry-message').textContent='Could not enter Activities. '+error.message;
       }else{
-      try{
-        const cached=cachedState(),saved=JSON.parse(sessionStorage.getItem('labtracker-v3:user')||'null');
-        if(cached&&saved){serverState=cached;user=saved;ready=true;initialized=cached.initialized;actor.value=user.actor;original.doLogin(user.role);present(true);}
-      }catch{}
-      status('Saving service unavailable. Cached work and drafts are retained.',true);
+      $('login-err').textContent=error.message;$('login-err').classList.add('show');
+      status('Activities could not connect. Cached work and pending changes are retained; complete Shared setup or retry sign-in.',true);
       }
     }
     window.addEventListener('activities-saving-changed',async()=>{
       if(!user&&document.documentElement.dataset.processLabEntry&&activitySaving.isConnected()){
         $('hub-entry-message').textContent='Checking your current access and loading live activities…';
         try{await enterFromHub(actor);}catch(error){user=null;ready=false;currentUser=null;$('hub-entry-message').textContent='Could not enter Activities. '+error.message;}
-      }else sync();
+      }else if(!user&&activitySaving.isConnected()){const saved=JSON.parse(sessionStorage.getItem('activities-firebase-session-v1')||'null');if(saved)login(saved.role,'');}else sync();
     });
-    setInterval(()=>{if(activitySaving.isConnected()||Date.now()-lastSyncAt>=300000)sync();},30000);window.addEventListener('online',sync);
+    setInterval(()=>{if(!document.hidden)sync();},30000);window.addEventListener('online',sync);
     window.addEventListener('storage',e=>{if(e.key?.startsWith(S.PREFIX)){present();sync();}});
     setInterval(persistDraft,3000);
   }
