@@ -4,16 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Weekly Activity Tracker</title>
-<meta name="lab-tracker-protocol" content="firebase-journal-v1"><meta name="lab-tracker-build" content="23.11.26b">
+<meta name="lab-tracker-protocol" content="firebase-journal-v1"><meta name="lab-tracker-build" content="23.11.26c">
 <script src="hub-entry.js?v=viewer-add-1"></script>
 <script src="gist-connection.js?v=activities-entry-1"></script>
-<script src="firebase-config.js?v=23.11.26b"></script>
-<script src="firebase-auth.js?v=23.11.26b"></script>
-<script src="firebase-signin.js?v=23.11.26b"></script>
-<script src="activities-access.js?v=23.11.26b"></script>
-<script src="firebase-codec.js?v=23.11.26b"></script>
-<script src="firebase-api.js?v=23.11.26b"></script>
-<script defer src="firebase-saving-ui.js?v=23.11.26b"></script>
+<script src="firebase-config.js?v=23.11.26c"></script>
+<script src="firebase-auth.js?v=23.11.26c"></script>
+<script src="activities-name-auth.js?v=23.11.26c"></script>
+<script src="firebase-signin.js?v=23.11.26c"></script>
+<script src="activities-access.js?v=23.11.26c"></script>
+<script src="firebase-codec.js?v=23.11.26c"></script>
+<script src="firebase-api.js?v=23.11.26c"></script>
+<script defer src="firebase-saving-ui.js?v=23.11.26c"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -278,7 +279,7 @@ body.activities-viewer #import-activities-btn { display:none !important; }
 <div class="login-screen" id="login-screen">
   <div class="login-card">
     <div class="login-logo">🔬 Process Lab</div>
-    <div class="login-sub">Activity Tracker · NVIDIA · Rev 23.11.26b</div>
+    <div class="login-sub">Activity Tracker · NVIDIA · Rev 23.11.26c</div>
     <div id="hub-entry-status" role="status">
       <p id="hub-entry-message">Checking your Process Lab access…</p>
       <div style="display:flex;gap:14px;margin-top:16px">
@@ -292,10 +293,10 @@ body.activities-viewer #import-activities-btn { display:none !important; }
         <span>Viewer</span><span class="lbl">View &amp; add unassigned activities</span>
       </button>
       <button class="login-level-btn" onclick="selectLevel('lab')">
-        <span>Editor</span><span class="lbl">Verified NVIDIA sign-in</span>
+        <span>Lab Practical Engineer</span><span class="lbl">Name only · no password</span>
       </button>
       <button class="login-level-btn" onclick="selectLevel('admin')">
-        <span>Manager / Owner</span><span class="lbl">Verified NVIDIA sign-in</span>
+        <span>Manager / Owner</span><span class="lbl">Yousef · password required</span>
       </button>
     </div>
     <div class="login-pw-form" id="login-pw-form">
@@ -2670,10 +2671,10 @@ function showSyncStatus(msg, isError){
  return {GistApi};
 });
 
-const activitySaving={getToken:()=>null,isConnected:()=>!!window.TrackerApi?.connected,disconnect:()=>LabFirebaseAuth.signOut()};
+const activitySaving={getToken:()=>null,isConnected:()=>!!window.TrackerApi?.connected,disconnect:()=>ActivitiesNameAuth.signOut()};
 function getToken(){ return activitySaving.getToken(); }
 const JOURNAL_GIST='8a640ad7fe31d7a2ac5637dd4de868f5';
-window.TrackerApi=ActivitiesFirebaseApi.create({databaseURL:LabFirebaseConfig.databaseURL,auth:LabFirebaseAuth,access:ActivitiesFirebaseAccess,storage:sessionStorage,signIn:LabFirebaseSignIn.open,loadHub:async()=>{const entry=ActivitiesHubEntry.parse(location.href);if(!entry||!/^([^@\s]+)@nvidia\.com$/i.test(entry.email))throw Error('Return to Process Lab and select a valid NVIDIA email.');return {mode:'hub',email:entry.email};}});
+window.TrackerApi=ActivitiesFirebaseApi.create({databaseURL:LabFirebaseConfig.databaseURL,auth:ActivitiesNameAuth,access:ActivitiesFirebaseAccess,storage:sessionStorage,signIn:LabFirebaseSignIn.open,loadHub:async()=>{const entry=ActivitiesHubEntry.parse(location.href);if(!entry||!/^([^@\s]+)@nvidia\.com$/i.test(entry.email))throw Error('Return to Process Lab and select a valid NVIDIA email.');return {mode:'hub',email:entry.email};}});
 /* The interface never writes whole snapshots to the server. */
 (function () {
   'use strict';

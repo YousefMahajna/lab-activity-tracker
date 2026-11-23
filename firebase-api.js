@@ -9,11 +9,26 @@
    const token=await o.auth.getIdToken();if(!token)throw error('Sign in with your verified NVIDIA email.',401);
    const headers={'X-Firebase-ETag':'true',...(value===undefined?{}:{'Content-Type':'application/json'}),...(etag?{'if-match':etag}:{})};
    let r;try{r=await fetcher(base+path+'.json?auth='+encodeURIComponent(token),{method,headers,...value===undefined?{}:{body:JSON.stringify(value)},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(25000)});}catch{throw error(method==='GET'?'The shared Activities database could not be reached.':'The save could not be confirmed. Pending work is retained for a safe retry.');}
-   if(!r.ok)throw error(r.status===412?'This operation already exists; checking the confirmed result.':r.status===401||r.status===403?'Activities access was refused. Verify your email and complete the Firebase rules setup.':'Firebase returned HTTP '+r.status+'.',r.status);
+   if(!r.ok)throw error(r.status===412?'This operation already exists; checking the confirmed result.':r.status===401||r.status===403?'Activities access was refused. The owner must publish the updated name-only access rules in Shared setup.':'Firebase returned HTTP '+r.status+'.',r.status);
    return {value:await r.json(),etag:r.headers.get('ETag')};
   }
-  async function ensure(){await o.auth.ready();if(!o.auth.user()?.emailVerified){await o.signIn();await o.auth.refresh();}const u=o.auth.user();if(!u?.emailVerified)throw error('Verify your NVIDIA email before entering Activities.',401);await o.access.load();const role=o.access.role(u.email);if(!role)throw error('No Activities access is listed for '+u.email+'.',403);return {u,role};}
-  function stillAllowed(){const u=o.auth.user();return u?.emailVerified&&activeUser?.uid===u.uid&&({guest:1,lab:2,admin:3}[activeUser.role]||9)<=({guest:1,lab:2,admin:3}[o.access.role(u.email)]||0);}
+  const isOwner=u=>u?.emailVerified&&u.email?.toLowerCase()==='ymahajna@nvidia.com';
+  const rank={guest:1,lab:2,admin:3};
+  async function ensure(role='admin'){
+   await o.auth.ready();
+   if(role!=='admin'&&o.auth.beginName&&!hubMode){await o.auth.beginName();return {u:o.auth.user(),role:'lab'};}
+   if(role==='admin')o.auth.owner?.();
+   if(!o.auth.user()?.emailVerified){await o.signIn();await o.auth.refresh();}
+   const u=o.auth.user();if(!u?.emailVerified)throw error('Owner access requires your verified account and password.',401);
+   await o.access.load();const maxRole=isOwner(u)?'admin':o.access.role(u.email)==='admin'?'lab':o.access.role(u.email);
+   if(!maxRole)throw error('No Activities access is listed for '+u.email+'.',403);return {u,role:maxRole};
+  }
+  function stillAllowed(){
+   const u=o.auth.user();if(!u||activeUser?.uid!==u.uid)return false;
+   if(u.isAnonymous)return ['guest','lab'].includes(activeUser.role);
+   const maxRole=isOwner(u)?'admin':o.access.role(u.email)==='admin'?'lab':o.access.role(u.email);
+   return u.emailVerified&&(rank[activeUser.role]||9)<=(rank[maxRole]||0);
+  }
   async function readAll(){
    const raw=(await call('GET')).value;if(!raw||raw.schema!==1||!raw.initialized)throw error('Activities Firebase setup is not initialized. Open Shared setup; the GitHub source is unchanged.',428);
    await o.access.load();if(activeUser&&!stillAllowed()){activeUser=null;throw error('Your Activities permission changed. Sign in again.',401);}
@@ -27,8 +42,16 @@
    result.applied=new Set(result.history.map(h=>h.op_id));result.history=history.concat(result.history);result.baseline=baseline;result.legacyHashes=JSON.parse(raw.operationHashesJSON||'{}');result.source=raw;last=result;return result;
   }
   async function read(){if(busy)return busy;busy=readAll();try{return await busy;}finally{busy=null;}}
-  async function login({role,actor}){const {u,role:maxRole}=await ensure();if(!['guest','lab','admin'].includes(role)||({guest:1,lab:2,admin:3}[role]>({guest:1,lab:2,admin:3}[maxRole])))throw error('Your verified account does not have this access level.',403);if(typeof actor!=='string'||actor.trim().length<2||actor.trim().length>100)throw error('Enter your name.',401);activeUser={role,actor:actor.trim(),email:u.email.toLowerCase(),uid:u.uid};await read();o.storage?.setItem('activities-firebase-session-v1',JSON.stringify(activeUser));return {user:activeUser};}
-  async function loginFromHub(){hubMode=true;const entry=await o.loadHub();const {u}=await ensure();if(u.email.toLowerCase()!==entry.email.toLowerCase())throw error('You are signed in as '+u.email+'. Return to Process Lab with this email or sign out to switch accounts.',401);const level=o.access.level(u.email),role=o.access.role(u.email);hubEntry={...entry,role,level,name:o.access.name(u.email)};await login({role,actor:hubEntry.name+' <'+entry.email+'>'});return {user:activeUser,entry:hubEntry};}
+  async function login({role,actor}){const {u,role:maxRole}=await ensure(role);if(!['guest','lab','admin'].includes(role)||({guest:1,lab:2,admin:3}[role]>({guest:1,lab:2,admin:3}[maxRole])))throw error('Your verified account does not have this access level.',403);if(typeof actor!=='string'||actor.trim().length<2||actor.trim().length>100)throw error('Enter your name.',401);activeUser={role,actor:actor.trim(),email:u.email?.toLowerCase()||'',uid:u.uid};await read();o.storage?.setItem('activities-firebase-session-v1',JSON.stringify(activeUser));return {user:activeUser};}
+  async function loginFromHub(){
+   hubMode=true;const entry=await o.loadHub();await o.access.load();const listed=o.access.role(entry.email);
+   if(!listed)throw error('No Activities access is listed for '+entry.email+'.',403);
+   let role=entry.email.toLowerCase()==='ymahajna@nvidia.com'?'admin':listed==='admin'?'lab':listed;
+   const name=o.access.name(entry.email),level=role==='admin'?'admin':role==='lab'?'editor':'viewer';
+   if(role!=='admin'&&o.auth.beginName){await o.auth.beginName();activeUser={role,actor:name+' <'+entry.email+'>',email:'',uid:o.auth.user().uid};await read();o.storage?.setItem('activities-firebase-session-v1',JSON.stringify(activeUser));}
+   else {const {u}=await ensure(role);if(u.email.toLowerCase()!==entry.email.toLowerCase())throw error('Sign in as '+entry.email+' or return to Process Lab to switch email.',401);await login({role,actor:name+' <'+entry.email+'>'});}
+   hubEntry={...entry,role,level,name};return {user:activeUser,entry:hubEntry};
+  }
   async function write(request){
    const before=await read();if(!stillAllowed())throw error('Sign in again; pending work is retained.',401);if(before.state.readOnly)throw error('A journal integrity issue needs owner review.',409);J.validateRequest(request);J.authorize(request,activeUser);if(request.instance!==before.baseline.instance)throw error('Pending work belongs to another tracker. Export it before switching.',409);
    if(before.legacyHashes[request.id]){if(before.legacyHashes[request.id]!==await J.hash(request))throw error('A confirmed operation ID has different content.',409);if(before.conflicts.has(request.id))throw Object.assign(error('The original change needs conflict review.',409),{details:before.conflicts.get(request.id)});return {ok:true,replayed:true,revision:before.state.revision};}
@@ -51,7 +74,7 @@
   }
   async function request(url,payload){
    if(url==='/api/login')return login(payload);if(url==='/api/logout'){activeUser=null;o.storage?.removeItem('activities-firebase-session-v1');await o.auth.signOut();return {ok:true};}
-   if(url==='/api/session'){await o.auth.ready();const u=o.auth.user();if(!u?.emailVerified)return {user:null,allowGuest:true,protocol:5};await o.access.load();let saved;try{saved=JSON.parse(o.storage?.getItem('activities-firebase-session-v1')||'null');}catch{}if(saved&&saved.uid===u.uid)activeUser=saved;return {user:stillAllowed()?activeUser:null,allowGuest:true,protocol:5};}
+   if(url==='/api/session'){await o.auth.ready();const u=o.auth.user();if(!u||(!u.emailVerified&&!u.isAnonymous))return {user:null,allowGuest:true,protocol:5};await o.access.load();let saved;try{saved=JSON.parse(o.storage?.getItem('activities-firebase-session-v1')||'null');}catch{}if(saved&&saved.uid===u.uid)activeUser=saved;return {user:stillAllowed()?activeUser:null,allowGuest:true,protocol:5};}
    if(!activeUser)throw error('Sign in with your verified NVIDIA email.',401);const result=await read();
    if(url==='/api/state')return M.clone(result.state);if(url==='/api/operations')return write(payload);if(activeUser.role!=='admin')throw error('Manager permission required.',403);
    if(url==='/api/backup')return {...M.clone(result.state),journalBackup:{baseline:result.baseline,history:result.history,operationHashes:result.legacyHashes}};
